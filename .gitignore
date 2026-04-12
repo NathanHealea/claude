@@ -1,0 +1,52 @@
+# ============================================
+# Claude Code .gitignore
+# Track: commands, settings, plugin config
+# Ignore: history, sessions, caches, projects
+# ============================================
+
+# --- Conversation & session history ---
+history.jsonl
+sessions/
+session-env/
+file-history/
+shell-snapshots/
+
+# --- Project-specific context & memory ---
+# Contains per-project memory, CLAUDE.md overrides,
+# and machine-specific paths encoded in directory names
+projects/
+
+# --- Session-scoped work tracking ---
+tasks/
+todos/
+plans/
+
+# --- Caches & ephemeral state ---
+cache/
+image-cache/
+paste-cache/
+debug/
+downloads/
+backups/
+
+# --- Telemetry & analytics ---
+telemetry/
+
+# --- IDE integration ---
+ide/
+
+# --- Auth & runtime state ---
+mcp-needs-auth-cache.json
+policy-limits.json
+
+# --- Lock files ---
+*.lock
+
+# --- Downloaded plugin marketplaces (fetched from remote) ---
+plugins/marketplaces/
+
+# --- Work-specific commands (not shareable) ---
+commands/work-*
+
+# --- OS artifacts ---
+.DS_Store
