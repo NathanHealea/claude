@@ -7,9 +7,20 @@ Scan all documentation files and update their status, acceptance criteria, and t
 **`$ARGUMENTS`:** $ARGUMENTS
 
 Arguments are optional:
-- **No arguments**: Scans all doc files under `docs/` and updates everything.
+- **No arguments**: Scans all doc files and updates everything.
 - **Doc file path** (ends with `.md`): Updates only the specified doc file (and the overview).
 - **Epic directory** (e.g. `standings-and-leaderboard`): Updates only docs within that epic directory (and the overview).
+
+## Context Detection
+
+### Detect docs directory
+
+1. Read the project's `CLAUDE.md` and look for a `## Workflow` section. If it contains a **Docs directory** field, use that value.
+2. If no `## Workflow` section exists, check the filesystem:
+   - If a `documents/` directory exists at the project root → use `documents`
+   - If a `docs/` directory exists at the project root → use `docs`
+   - Otherwise → default to `docs`
+3. Store as **`$DOCS_DIR`**.
 
 ## Steps
 
@@ -18,8 +29,8 @@ Arguments are optional:
 #### 1a. Determine scope
 
 - If `$ARGUMENTS` is a path to a specific `.md` file, use only that file.
-- If `$ARGUMENTS` is an epic directory name (matches a directory under `docs/`), gather all `.md` files in that directory.
-- If no arguments, gather all `.md` files under `docs/` (excluding `docs/overview.md`, `docs/contributions/`, and `docs/guides/`).
+- If `$ARGUMENTS` is an epic directory name (matches a directory under `$DOCS_DIR/`), gather all `.md` files in that directory.
+- If no arguments, gather all `.md` files under `$DOCS_DIR/` (excluding `$DOCS_DIR/overview.md`, `$DOCS_DIR/contributions/`, and `$DOCS_DIR/guides/`).
 
 #### 1b. Filter to actionable docs
 
@@ -68,7 +79,7 @@ For each doc where the status or acceptance criteria changed:
 
 ### 4. Update the overview
 
-Read `docs/overview.md` and update the epic scope checklists to match the current state of each doc:
+Read `$DOCS_DIR/overview.md` and update the epic scope checklists to match the current state of each doc:
 
 - Each epic has a **High-Level Scope** section with checkboxes linking to doc files
 - A scope item should be checked (`[x]`) if the linked doc's status is **Completed**
@@ -78,11 +89,11 @@ Only update checkboxes for docs that were evaluated. Do not modify other overvie
 
 ### 5. Check for undocumented items
 
-Scan the epic scope lists in `docs/overview.md` for items that reference doc files. Check if any referenced doc files are missing. If so, report them to the user but do not create new docs.
+Scan the epic scope lists in `$DOCS_DIR/overview.md` for items that reference doc files. Check if any referenced doc files are missing. If so, report them to the user but do not create new docs.
 
 ### 6. Commit
 
-Stage all modified doc files and `docs/overview.md`. Create a single commit:
+Stage all modified doc files and `$DOCS_DIR/overview.md`. Create a single commit:
 
 ```
 Update doc status and acceptance criteria
