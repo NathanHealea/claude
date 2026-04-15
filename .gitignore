@@ -38,12 +38,14 @@ ide/
 # --- Auth & runtime state ---
 mcp-needs-auth-cache.json
 policy-limits.json
+.credentials.json
 
 # --- Lock files ---
 *.lock
 
 # --- Downloaded plugin marketplaces (fetched from remote) ---
 plugins/marketplaces/
+known_marketplaces.json
 
 # --- Work-specific commands (not shareable) ---
 commands/work-*
