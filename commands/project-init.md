@@ -95,6 +95,7 @@ Generate a `CLAUDE.md` file in the project root (`{project-name}/CLAUDE.md`) usi
 - **Docs directory**: `{docs|documents}/`
 - **Remote type**: `{github|bitbucket}` {detected from git remote, or placeholder}
 - **PR template**: `{github-default|bitbucket-uo|custom}`
+- **Default merge target**: `{main|develop}` {detected from remote HEAD, or `main`}
 ````
 
 #### Derivation rules for CLAUDE.md
@@ -106,7 +107,7 @@ When **context is provided**:
 - **Project Structure**: Leave as placeholder (project hasn't been built yet).
 - **Conventions**: Infer from the tech stack (e.g., React → component files in PascalCase, Next.js → app router conventions).
 - **Testing**: Infer framework from the tech stack (e.g., React + Vite → Vitest, Bun → Bun test). Leave as placeholder if unclear.
-- **Workflow**: Set **Docs directory** from the `--docs`/`--documents` flag. Detect **Remote type** from `git remote -v` if inside a git repo, otherwise leave as placeholder. Set **PR template** based on remote type (`github` → `github-default`, `bitbucket` → `bitbucket-uo`).
+- **Workflow**: Set **Docs directory** from the `--docs`/`--documents` flag. Detect **Remote type** from `git remote -v` if inside a git repo, otherwise leave as placeholder. Set **PR template** based on remote type (`github` → `github-default`, `bitbucket` → `bitbucket-uo`). Detect **Default merge target** from `git symbolic-ref refs/remotes/origin/HEAD` if available, otherwise default to `main`.
 
 When **no context is provided**:
 

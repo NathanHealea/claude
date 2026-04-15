@@ -44,6 +44,7 @@ Read the context file and extract from the `## Staged` section:
 - **PR number** — from the `PR number` field
 - **PR URL** — from the `PR URL` field
 - **Worktree path** — from the `Worktree path` field
+- **Merge Into** — from the `Merge Into` field (defaults to `main` if not present)
 
 If the `## Staged` section or required fields are missing, stop and tell the user to run `/stage` first.
 
@@ -99,12 +100,12 @@ If the merge fails (e.g. merge conflicts, required reviews), stop and report the
 
 Skip this step — the PR was already confirmed as merged in step 2.
 
-### 4. Update local main
+### 4. Update local target branch
 
-Determine the main worktree path from `git worktree list` (the first entry) and update it:
+Determine the main worktree path from `git worktree list` (the first entry) and update the merge target branch:
 
 ```bash
-git -C {main-worktree-path} checkout main
+git -C {main-worktree-path} checkout {merge-into}
 git -C {main-worktree-path} pull
 ```
 

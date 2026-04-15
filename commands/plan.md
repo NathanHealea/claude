@@ -40,6 +40,17 @@ Before executing any mode, detect project-specific configuration. These values a
 3. If not found → scan the codebase for existing test files (`*.test.*`, `*.spec.*`, `__tests__/`, `tests/`). Infer the framework and conventions from what exists. Store as **`$TEST_GUIDANCE`**.
 4. If no test files exist either → set **`$TEST_GUIDANCE`** to empty. The unit test section will be skipped in plans.
 
+### 3. Parse optional flags
+
+Scan `$ARGUMENTS` for these optional flags (can appear anywhere in the input). Remove each flag and its value from the arguments before further parsing.
+
+- `--branch <name>` — Explicit git branch name for this feature.
+- `--merge-into <name>` — Target branch for the PR created by `/stage`.
+
+Store as:
+- **`$BRANCH_OVERRIDE`** — the explicit branch name, or empty if not provided.
+- **`$MERGE_INTO`** — the target branch. Resolution order: (1) `--merge-into` flag value, (2) **Default merge target** from `CLAUDE.md` `## Workflow` section, (3) `main`.
+
 ---
 
 ## Epic Mode
@@ -91,6 +102,8 @@ For each feature, determine:
 - **Acceptance criteria** — checklist of what "done" looks like
 - **Implementation plan** — step-by-step plan for that feature (what files to create/modify, how to implement, order of operations, risks)
 - **Unit tests** — if `$TEST_GUIDANCE` is not empty, include which test files to create or update and what scenarios to cover, following the conventions in `$TEST_GUIDANCE`
+- **Branch** — `feature/{feature-slug}` (derived from the feature's doc slug)
+- **Merge into** — `$MERGE_INTO` (defaults to `main`)
 
 #### 4. Create the epic directory
 
@@ -106,6 +119,8 @@ For each feature identified in Step 3, create a doc file at `$DOCS_DIR/{epic-slu
 **Epic:** {Epic Name}
 **Type:** {Type}
 **Status:** Todo
+**Branch:** {Branch Name}
+**Merge Into:** {Merge Into Branch}
 
 ## Summary
 
@@ -240,6 +255,8 @@ Set the following values for use in later steps:
 - **Extra context**: Anything after `--` (if provided)
 - **Doc slug**: The generated kebab-case slug
 - **Doc directory**: The determined epic directory (e.g. `$DOCS_DIR/seasons/`, `$DOCS_DIR/other/`)
+- **Branch**: If `$BRANCH_OVERRIDE` is set, use it. Otherwise derive as `{type}/{doc-slug}` — the branch prefix matches the doc type exactly (e.g., `feature/admin-season-delete`, `bug/login-crash`, `refactor/auth-cleanup`).
+- **Merge into**: `$MERGE_INTO`
 
 #### 3. Explore the codebase
 
@@ -271,6 +288,8 @@ Determine the full path: `{doc directory}/{doc-slug}.md`
    - **Epic** — The epic name derived from the doc directory (e.g., `$DOCS_DIR/seasons/` → `Seasons`).
    - **Summary / Description** — A clear summary based on the gathered context (including extra context if provided).
    - **Status** — Set to `Todo`.
+   - **Branch** — The **Branch** value from Step 2.
+   - **Merge Into** — The **Merge into** value from Step 2.
    - **Implementation plan** — The step-by-step plan from Step 4. If the template doesn't have an explicit "Implementation" section, add one.
 4. Fill in as much of the template as possible from the codebase exploration — acceptance criteria, affected files, technical details, etc.
 

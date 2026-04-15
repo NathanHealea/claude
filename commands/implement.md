@@ -29,20 +29,20 @@ Read the `.md` file and extract only what's needed for worktree setup:
 - **Description** — from the `## Summary` section content
 - **Doc path** — the absolute path to the doc file
 - **Doc directory** — the directory the doc file lives in
+- **Branch** — from the `**Branch:**` field (if present)
+- **Merge Into** — from the `**Merge Into:**` field (defaults to `main` if not present)
 
 Verify the doc has an `### Implementation Steps` or `### Approach` section. If not, stop and tell the user the doc needs an implementation plan. Suggest they run `/plan {doc-path}` to add one.
 
-Type mapping (doc type → branch prefix):
+#### Determine the branch name
 
-| Doc type (case-insensitive) | Branch prefix |
-|---|---|
-| `Feature` | `feature/` |
-| `Bug`, `Hotfix` | `fix/` |
-| `Enhancement`, `Refactor` | `refactor/` |
+If the doc has a **Branch** field with a non-empty value → use it directly as the branch name.
 
-If the doc type doesn't match any of these, default to `feature/`.
+Otherwise, derive the branch name from the doc type and filename:
 
-Generate the **branch slug** from the doc filename (strip `.md`, e.g., `admin-profile-linking.md` → `admin-profile-linking`).
+1. Generate the **branch slug** from the doc filename (strip `.md`, e.g., `admin-profile-linking.md` → `admin-profile-linking`).
+2. Use the doc type (lowercased) as the branch prefix (e.g., `feature` → `feature/`, `bug` → `bug/`, `refactor` → `refactor/`, `hotfix` → `hotfix/`). If the type is missing, default to `feature/`.
+3. Combine: `{type}/{branch-slug}` (e.g., `feature/admin-profile-linking`, `bug/login-crash`).
 
 ### 2. Pre-flight check
 
@@ -69,6 +69,7 @@ Create `.context.{branch-slug}.md` in the worktree root:
 
 - **Type**: {type}
 - **Branch**: {branch-name}
+- **Merge Into**: {merge-into}
 - **Doc directory**: {doc directory}
 - **Created**: {current date YYYY-MM-DD}
 

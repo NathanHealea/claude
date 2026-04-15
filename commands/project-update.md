@@ -49,7 +49,13 @@ Store as the **Bitbucket hosts** value.
 - If remote type is `github` → `github-default`
 - If remote type is `bitbucket` → `bitbucket-uo`
 
-#### 2e. Package manager
+#### 2e. Default merge target
+
+1. If `CLAUDE.md` already has a `## Workflow` section with a **Default merge target** field → use that value (already configured).
+2. Try to detect from git: run `git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null` and extract the branch name (e.g., `refs/remotes/origin/main` → `main`, `refs/remotes/origin/develop` → `develop`).
+3. If detection fails → default to `main`.
+
+#### 2f. Package manager
 
 Detect from lock files:
 - `bun.lockb` → bun
@@ -58,7 +64,7 @@ Detect from lock files:
 - `package-lock.json` or `package.json` → npm
 - None → skip
 
-#### 2f. Testing conventions
+#### 2g. Testing conventions
 
 Scan the project for existing test infrastructure:
 
@@ -137,6 +143,7 @@ Append the new sections to the end of `CLAUDE.md` (before any trailing whitespac
 - **Docs directory**: `{detected dir}/`
 - **Remote type**: `{detected type}`
 - **PR template**: `{detected template}`
+- **Default merge target**: `{detected branch}`
 {if bitbucket: "- **Bitbucket hosts**: `{hostname}`"}
 ```
 
@@ -150,6 +157,7 @@ Output a clear summary of what was detected and what changed:
 ### Detected Context
 - **Docs directory**: {value} ({how detected — e.g., "found documents/ directory", "from existing CLAUDE.md"})
 - **Remote type**: {value} ({how detected — e.g., "parsed from git remote: git@github.com:user/repo.git"})
+- **Default merge target**: {value} ({how detected — e.g., "from remote HEAD", "from existing CLAUDE.md", "default"})
 - **Package manager**: {value}
 - **Test framework**: {value} ({how detected — e.g., "vitest in devDependencies"})
 - **Test files found**: {count} ({pattern — e.g., "colocated *.test.tsx files"})

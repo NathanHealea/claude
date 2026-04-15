@@ -38,6 +38,13 @@ No arguments required. Run from inside the feature branch (main repo or worktree
 2. Otherwise: `documents/` if it exists, then `docs/` if it exists, then default `docs`.
 3. Store as **`$DOCS_DIR`**.
 
+### 4. Detect merge target
+
+1. Find the `.context.*.md` file in the current working directory.
+2. If found, read the **Merge Into** field. Store as **`$MERGE_TARGET`**.
+3. If no context file or no **Merge Into** field → check `CLAUDE.md` `## Workflow` for a **Default merge target** field.
+4. If still not found → default to `main`.
+
 ---
 
 ## Steps
@@ -55,13 +62,17 @@ Check if `package.json` exists and has a `version` field. If not, skip to Step 4
 
 Read the current branch name and determine the version bump type from the prefix:
 
-| Branch prefix | Bump type |
-|---------------|-----------|
-| `feature/*`   | minor     |
-| `fix/*`       | patch     |
-| `refactor/*`  | patch     |
-| `breaking/*`  | major     |
-| anything else | patch     |
+| Branch prefix      | Bump type |
+|--------------------|-----------|
+| `feature/*`        | minor     |
+| `enhancement/*`    | minor     |
+| `bug/*`            | patch     |
+| `fix/*`            | patch     |
+| `patch/*`          | patch     |
+| `hotfix/*`         | patch     |
+| `refactor/*`       | patch     |
+| `breaking/*`       | major     |
+| anything else      | patch     |
 
 ### 3. Bump version
 
@@ -115,7 +126,7 @@ Generated with [Claude Code](https://claude.com/claude-code)
 ```
 
 ```bash
-gh pr create --title "<title>" --body-file /tmp/pr-body.txt
+gh pr create --title "<title>" --body-file /tmp/pr-body.txt --base $MERGE_TARGET
 ```
 
 #### 6b. Bitbucket (`$REMOTE_TYPE` = `bitbucket`)
@@ -163,7 +174,7 @@ Write the JSON payload to `/tmp/pr-payload.json`:
     "id": "refs/heads/<branch-name>"
   },
   "toRef": {
-    "id": "refs/heads/main"
+    "id": "refs/heads/$MERGE_TARGET"
   }
 }
 ```
@@ -201,6 +212,7 @@ Find the `.context.*.md` file in the current working directory. If one exists, a
 - **PR URL**: {full PR URL}
 - **Version**: {new version, or "N/A" if no bump}
 - **Branch slug**: {kebab-case portion after the prefix}
+- **Merge Into**: {$MERGE_TARGET}
 - **Worktree path**: {absolute path from `git rev-parse --show-toplevel`}
 - **Staged**: {current date YYYY-MM-DD}
 ```
