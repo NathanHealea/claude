@@ -177,3 +177,7 @@ Print:
 - Build / lint / test status
 - Next: `/stage` when ready
 - Cleanup: `git worktree remove .claude/worktrees/{slug}`
+
+### 19. Compact the conversation
+
+After presenting the final report, invoke the `/compact` command to compress the conversation context. This conserves daily rate limit usage.

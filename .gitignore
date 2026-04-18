@@ -28,6 +28,7 @@ paste-cache/
 debug/
 downloads/
 backups/
+stats-cache.json
 
 # --- Telemetry & analytics ---
 telemetry/

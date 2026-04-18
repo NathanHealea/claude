@@ -54,3 +54,7 @@ Tell the user:
 - What's been completed vs. what remains
 - How to resume: `/implement-continue {slug}`
 - The worktree is preserved and ready to resume at any time
+
+### 6. Compact the conversation
+
+After reporting, invoke the `/compact` command to compress the conversation context. This conserves daily rate limit usage.

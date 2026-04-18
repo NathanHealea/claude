@@ -177,3 +177,7 @@ If nothing was changed (both sections already exist and are complete), tell the 
 ```
 CLAUDE.md already has ## Testing and ## Workflow sections — no changes needed.
 ```
+
+### 6. Compact the conversation
+
+After reporting, invoke the `/compact` command to compress the conversation context. This conserves daily rate limit usage.

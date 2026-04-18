@@ -84,3 +84,7 @@ After the tables, print a one-line summary:
 ```
 
 Where Z is the count of docs that were skipped because their status was Completed.
+
+### 5. Compact the conversation
+
+After printing the summary, invoke the `/compact` command to compress the conversation context. This conserves daily rate limit usage.

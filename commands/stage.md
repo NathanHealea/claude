@@ -237,3 +237,7 @@ Tell the user:
 - A link to the PR (for review and merge)
 - That the context file has been updated (if applicable)
 - Remind them to review the PR, then run `/release` to merge and complete the workflow
+
+### 10. Compact the conversation
+
+After reporting, invoke the `/compact` command to compress the conversation context. This conserves daily rate limit usage.

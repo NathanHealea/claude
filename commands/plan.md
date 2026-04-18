@@ -199,6 +199,11 @@ Tell the user:
 - A brief summary of each feature (title + one-line description)
 - That the overview has been updated
 - Suggest they review the docs, then run `/implement {doc-path}` on each feature to start working (in order)
+- Remind them to switch models before implementing: run `/model sonnet` before `/implement` to conserve daily rate limit (planning is done, execution is cheaper on Sonnet)
+
+#### 9. Compact the conversation
+
+After reporting, invoke the `/compact` command to compress the conversation context. This conserves daily rate limit usage.
 
 ---
 
@@ -329,6 +334,11 @@ Tell the user:
 - A summary of the implementation plan
 - That the overview has been updated
 - Suggest they review the doc, then run `/implement {doc-path}` to create a worktree and start working
+- Remind them to switch models before implementing: run `/model sonnet` before `/implement` to conserve daily rate limit (planning is done, execution is cheaper on Sonnet)
+
+#### 9. Compact the conversation
+
+After reporting, invoke the `/compact` command to compress the conversation context. This conserves daily rate limit usage.
 
 ---
 
@@ -393,3 +403,8 @@ Tell the user:
 - A summary of the implementation plan
 - That the doc has been updated in place
 - Suggest they review the plan, then run `/implement {doc-path}` to create a worktree and start working
+- Remind them to switch models before implementing: run `/model sonnet` before `/implement` to conserve daily rate limit (planning is done, execution is cheaper on Sonnet)
+
+#### 7. Compact the conversation
+
+After reporting, invoke the `/compact` command to compress the conversation context. This conserves daily rate limit usage.

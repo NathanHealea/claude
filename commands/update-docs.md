@@ -109,3 +109,7 @@ Tell the user:
 - Which acceptance criteria were updated (brief summary)
 - Whether the overview was updated
 - Any missing doc files that were referenced but not found
+
+### 8. Compact the conversation
+
+After reporting, invoke the `/compact` command to compress the conversation context. This conserves daily rate limit usage.

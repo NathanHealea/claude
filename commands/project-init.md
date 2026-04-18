@@ -212,3 +212,7 @@ Tell the user:
   - Review and refine `overview.md`
   - Run `/plan epic <description>` to break epics into implementable feature docs
   - Run `/implement <path/to/doc.md>` to start building
+
+## 6. Compact the conversation
+
+After reporting, invoke the `/compact` command to compress the conversation context. This conserves daily rate limit usage.

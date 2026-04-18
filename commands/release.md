@@ -165,3 +165,7 @@ Tell the user:
 - Local `main` is up to date
 - Doc status updated (if applicable)
 - The work is complete
+
+### 11. Clear the conversation
+
+After reporting, invoke the `/clear` command to reset the conversation context. The workflow is complete, so a full clear is safe and saves more tokens than `/compact`.
