@@ -49,7 +49,15 @@ No arguments required. Run from inside the feature branch (main repo or worktree
 
 ## Steps
 
-### 1. Update overview document (if applicable)
+### 1. Verify branch is rebased
+
+1. Determine `$REBASE_SOURCE` using the same logic as `/rebase` Step 1: `$ARGUMENTS` → `.context.*.md` **Merge Into** field → `main`.
+2. Run `git fetch origin $REBASE_SOURCE`.
+3. Run `git log HEAD..origin/$REBASE_SOURCE --oneline`.
+4. If the output is **empty**, the branch is up to date — continue to Step 2.
+5. If the output is **non-empty**, the branch is behind `origin/$REBASE_SOURCE`. Follow the `/rebase` command workflow (Steps 4–7) to rebase before continuing. If the rebase is aborted, stop `/stage`.
+
+### 2. Update overview document (if applicable)
 
 Check if a `$DOCS_DIR/overview.md` file exists in the project. If it does:
 
@@ -65,20 +73,12 @@ Check if a `$DOCS_DIR/overview.md` file exists in the project. If it does:
 
 If `$DOCS_DIR/overview.md` does not exist, skip silently.
 
-### 2. Pre-flight checks
+### 3. Pre-flight checks
 
 - Confirm we are NOT on `main`. If on `main`, stop and tell the user to switch to a feature branch.
 - Detect the package manager (`bun.lockb` → bun, `pnpm-lock.yaml` → pnpm, `yarn.lock` → yarn, default → npm).
 - Run the build command. If it fails, stop and report the errors.
 - Run the lint command (if a `lint` script exists in `package.json`). If it fails, stop and report the errors.
-
-### 3. Commit all changes
-
-Stage all pending changes and create a commit. The commit message should summarize the work on this branch — look at the branch name, changed files, and recent commits on the branch to write a descriptive message using conventional commit format:
-
-```
-feat(seasons): add leaderboard page with season filtering
-```
 
 ### 4. Determine version bump (if applicable)
 
@@ -98,7 +98,7 @@ Read the current branch name and determine the version bump type from the prefix
 | `breaking/*`       | major     |
 | anything else      | patch     |
 
-### 5. Bump version and commit
+### 5. Bump version
 
 Run the version bump using the detected package manager:
 
@@ -106,13 +106,17 @@ Run the version bump using the detected package manager:
 npm version <major|minor|patch> --no-git-tag-version
 ```
 
-Stage `package.json` (and `package-lock.json` / lockfile if updated) and create a dedicated commit:
+### 6. Commit all changes
+
+Stage all changes (including the version bump if done) and create a commit. The commit message should summarize the work on this branch — look at the branch name, changed files, and recent commits on the branch to write a descriptive message using conventional commit format.
+
+If a version bump was done, include the version number:
 
 ```
-chore: bump version to v2.5.0
+feat(seasons): add leaderboard page with season filtering (v2.5.0)
 ```
 
-### 6. Push branch
+### 7. Push branch
 
 Push the branch to origin with the `-u` flag:
 
@@ -120,11 +124,11 @@ Push the branch to origin with the `-u` flag:
 git push -u origin <branch-name>
 ```
 
-### 7. Create PR
+### 8. Create PR
 
 Branch based on **`$REMOTE_TYPE`**:
 
-#### 7a. GitHub (`$REMOTE_TYPE` = `github`)
+#### 8a. GitHub (`$REMOTE_TYPE` = `github`)
 
 Check for a `.github/PULL_REQUEST_TEMPLATE.md` — if it exists, use it as the body template and fill in the sections. Otherwise, use the default format.
 
@@ -149,7 +153,7 @@ Generated with [Claude Code](https://claude.com/claude-code)
 gh pr create --title "<title>" --body-file /tmp/pr-body.txt --base $MERGE_TARGET
 ```
 
-#### 7b. Bitbucket (`$REMOTE_TYPE` = `bitbucket`)
+#### 8b. Bitbucket (`$REMOTE_TYPE` = `bitbucket`)
 
 Parse the remote URL to extract the project key and repo slug dynamically:
 - Read `git remote get-url origin`
@@ -217,11 +221,11 @@ If the API call fails (no token, auth error, network error), fall back to provid
 https://{hostname}/projects/{PROJECT_KEY}/repos/{repo-slug}/pull-requests?create&sourceBranch=refs%2Fheads%2F<branch-name>
 ```
 
-#### 7c. Unknown (`$REMOTE_TYPE` = `unknown`)
+#### 8c. Unknown (`$REMOTE_TYPE` = `unknown`)
 
 Write the PR body to `/tmp/pr-body.txt` using the GitHub default format. Print the body content and tell the user to create the PR manually on their hosting platform.
 
-### 8. Update the context file
+### 9. Update the context file
 
 Find the `.context.*.md` file in the current working directory. If one exists, append a `## Staged` section:
 
@@ -239,7 +243,7 @@ Find the `.context.*.md` file in the current working directory. If one exists, a
 
 If no context file is found, skip silently.
 
-### 9. Report
+### 10. Report
 
 Tell the user:
 - The new version number (if bumped)
@@ -247,6 +251,6 @@ Tell the user:
 - That the context file has been updated (if applicable)
 - Remind them to review the PR, then run `/release` to merge and complete the workflow
 
-### 10. Compact the conversation
+### 11. Compact the conversation
 
 After reporting, invoke the `/compact` command to compress the conversation context. This conserves daily rate limit usage.
