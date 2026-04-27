@@ -20,3 +20,8 @@ On approval: mark `[x]`, commit if applicable, move to next item. If I request c
 
 ### 4. Keep Task List Current
 Update status immediately as it changes — don't batch.
+
+## Git Commit Rules
+
+- Never include `Co-Authored-By: Claude` or any Claude/Anthropic co-author trailer in commit messages.
+- Never add Claude as a git author or committer.
