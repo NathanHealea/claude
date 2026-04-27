@@ -72,9 +72,17 @@ If `$DOCS_DIR/overview.md` does not exist, skip silently.
 - Run the build command. If it fails, stop and report the errors.
 - Run the lint command (if a `lint` script exists in `package.json`). If it fails, stop and report the errors.
 
-### 3. Determine version bump (if applicable)
+### 3. Commit all changes
 
-Check if `package.json` exists and has a `version` field. If not, skip to Step 5.
+Stage all pending changes and create a commit. The commit message should summarize the work on this branch — look at the branch name, changed files, and recent commits on the branch to write a descriptive message using conventional commit format:
+
+```
+feat(seasons): add leaderboard page with season filtering
+```
+
+### 4. Determine version bump (if applicable)
+
+Check if `package.json` exists and has a `version` field. If not, skip to Step 6.
 
 Read the current branch name and determine the version bump type from the prefix:
 
@@ -90,7 +98,7 @@ Read the current branch name and determine the version bump type from the prefix
 | `breaking/*`       | major     |
 | anything else      | patch     |
 
-### 4. Bump version
+### 5. Bump version and commit
 
 Run the version bump using the detected package manager:
 
@@ -98,14 +106,10 @@ Run the version bump using the detected package manager:
 npm version <major|minor|patch> --no-git-tag-version
 ```
 
-### 5. Commit all changes
-
-Stage all changes (including the version bump if done) and create a commit. The commit message should summarize the work on this branch — look at the branch name, changed files, and recent commits on the branch to write a descriptive message using conventional commit format.
-
-If a version bump was done, include the version number:
+Stage `package.json` (and `package-lock.json` / lockfile if updated) and create a dedicated commit:
 
 ```
-feat(seasons): add leaderboard page with season filtering (v2.5.0)
+chore: bump version to v2.5.0
 ```
 
 ### 6. Push branch

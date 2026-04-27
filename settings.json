@@ -97,6 +97,7 @@
     ],
     "defaultMode": "auto"
   },
+  "autoCompactWindow": 150000,
   "skipAutoPermissionPrompt": true,
-  "autoCompactWindow": 150000
+  "model": "sonnet"
 }

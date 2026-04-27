@@ -109,6 +109,25 @@ git -C {main-worktree-path} checkout {merge-into}
 git -C {main-worktree-path} pull
 ```
 
+### 4b. Tag the merged commit
+
+After pulling the updated target branch, tag its HEAD with the release version:
+
+1. Read the version from `package.json` in the main worktree (e.g. `1.18.1`). Prefix it with `v` → `v1.18.1`.
+2. Create an annotated tag on the current HEAD of the target branch:
+
+   ```bash
+   git -C {main-worktree-path} tag -a v{version} HEAD -m "Release v{version}"
+   ```
+
+3. Push the tag to origin:
+
+   ```bash
+   git -C {main-worktree-path} push origin v{version}
+   ```
+
+If tagging or pushing the tag fails, report it but continue — do not abort the rest of the release.
+
 ### 5. Delete the remote branch
 
 If the remote branch still exists (may not for GitHub with `--delete-branch`, or Bitbucket if auto-delete is configured), remove it:
