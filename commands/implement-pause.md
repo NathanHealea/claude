@@ -1,12 +1,10 @@
 # Implement Pause
 
-Pause an in-progress implementation, saving state so it can be resumed later.
+Pause an in-progress implementation: commit all uncommitted changes, ensure the implementation doc has a remote branch recorded, and push the branch to remote so it can be resumed on any machine.
 
 ## Input
 
-**`$ARGUMENTS`:** $ARGUMENTS
-
-Optional: a **branch slug** (e.g., `hue-value-suggestions`). If omitted, detect from the current worktree.
+No arguments. Context is detected automatically from the current worktree.
 
 ---
 
@@ -14,46 +12,70 @@ Optional: a **branch slug** (e.g., `hue-value-suggestions`). If omitted, detect 
 
 ### 1. Detect current implementation
 
-- If inside a worktree, read `.context.*.md` to identify the branch and doc file.
-- If a branch slug is provided, look for `.claude/worktrees/{slug}/.context.*.md`.
-- If neither works, stop and tell the user no active implementation was found.
+Locate the active implementation context:
+- If inside a worktree, find `.context.*.md` in the worktree root.
+- Otherwise, search `.claude/worktrees/*/` for `.context.*.md` files. If exactly one is found, use it. If multiple are found, list them and ask the user to pick one via **AskUserQuestion**.
+- If none is found, stop and tell the user: no active implementation was detected.
 
-### 2. Commit any uncommitted work
+From the context file, extract:
+- `slug` — derived from the context filename (`.context.{slug}.md`)
+- `branch` — from the `**Branch:**` field
+- `doc-path` — from the `**Doc path:**` field
+- `worktree` — `.claude/worktrees/{slug}`
 
-- Run `git status` in the worktree.
-- If there are staged or unstaged changes, commit them with message: `wip: pause implementation`.
-- If clean, skip.
+### 2. Commit all uncommitted changes
 
-### 3. Save progress snapshot
+Run `git -C {worktree} status` to check for staged or unstaged changes.
 
-Update the context file (`.context.{slug}.md`) by appending a `## Progress` section:
+If there are uncommitted changes, invoke `/commit` to commit them. Wait for the commit to complete before continuing.
 
-```markdown
-## Progress
+If the worktree is clean, skip this step.
 
-- **Paused**: {current date YYYY-MM-DD}
-- **Last commit**: {short SHA and message}
-- **Commits on branch**: {count}
+### 3. Ensure the doc has a Branch field
 
-### Remaining work
+Read the doc file at `{doc-path}`. Look for a `**Branch:**` field in the document metadata (typically near the top, alongside `**Type:**`, `**Status:**`, etc.).
 
-{List any uncompleted acceptance criteria from the doc file — read the doc and find unchecked `- [ ]` items}
+- **Field exists and is non-empty** → no change needed; use its value as the remote branch name.
+- **Field is missing or empty** → determine the branch name from `git -C {worktree} branch --show-current`, then add or update the field:
+
+  ```markdown
+  **Branch:** {branch-name}
+  ```
+
+  Place it alongside the other metadata fields (after `**Type:**` if present, otherwise after the first `**...**` metadata line).
+
+  After editing the doc, commit the change from the **main repo** (not the worktree), since the doc file lives outside the worktree:
+
+  ```
+  git add {doc-path}
+  git commit -m "docs({slug}): add Branch metadata for remote resume"
+  ```
+
+### 4. Push to remote
+
+From within the worktree, get the current branch: `git -C {worktree} branch --show-current`.
+
+Attempt to push:
+
+```bash
+git -C {worktree} push
 ```
 
-If a `## Progress` section already exists, replace it.
+If the push fails because no upstream is set (exit code non-zero, message references `--set-upstream` or `no upstream`), create the remote branch:
 
-### 4. Commit the progress snapshot
+```bash
+git -C {worktree} push --set-upstream origin {branch-name}
+```
 
-Commit the updated context file: `chore: save implementation progress snapshot`.
+If the push fails for any other reason (auth, network, conflict), show the error and stop — do not silently swallow it.
 
 ### 5. Report
 
 Tell the user:
-- Branch name and worktree path
-- Number of commits made so far
-- What's been completed vs. what remains
-- How to resume: `/implement-continue {slug}`
-- The worktree is preserved and ready to resume at any time
+- Branch pushed to: `origin/{branch-name}`
+- Worktree path: `.claude/worktrees/{slug}`
+- Commits on branch: output of `git -C {worktree} log --oneline {merge-into}..HEAD`
+- How to resume on any machine: `/implement-continue {slug}`
 
 ### 6. Compact the conversation
 
