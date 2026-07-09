@@ -1,13 +1,21 @@
 # Implement Continue
 
-Fetch an implementation branch from remote source control, set up its worktree on this machine (if not already present), and resume interactive step-by-step implementation.
+Fetch an implementation branch from remote source control, set up its worktree on this machine
+(if not already present), and resume interactive step-by-step implementation.
+
+This command reuses the shared implementation loop in **`~/.claude/workflow/_interactive-loop.md`**
+(run in **`interactive`** mode) and the state-file contract in
+**`~/.claude/workflow/_state-file.md`**. Only the fetch/resume setup below is unique to this
+command.
 
 ## Input
 
 **`$ARGUMENTS`:** $ARGUMENTS
 
-- **slug** (required) — the document name of the implementation (e.g., `hue-value-suggestions`). Strip `.md` if accidentally included.
-- **branch** (optional) — the remote branch the worktree code was pushed to (e.g., `feature/hue-value-suggestions`).
+- **slug** (required) — the document name of the implementation (e.g., `hue-value-suggestions`).
+  Strip `.md` if accidentally included.
+- **branch** (optional) — the remote branch the worktree code was pushed to (e.g.,
+  `feature/hue-value-suggestions`).
 
 If no arguments are provided, stop and tell the user: `Usage: /implement-continue <slug> [branch]`.
 
@@ -29,7 +37,8 @@ Search for a file named `{slug}.md` in these locations, in order:
 3. `./{slug}.md`
 4. Any `*.md` file in the project whose filename (without extension) matches the slug exactly.
 
-If a doc file is found, read it and look for a `**Branch:**` field. If the field is present and non-empty, use that value as `branch` and skip to Phase 2.
+If a doc file is found, read it and look for a `**Branch:**` field. If the field is present and
+non-empty, use that value as `branch` and skip to Phase 2.
 
 ### 3. Infer branch from remote refs (if not found in doc)
 
@@ -117,7 +126,8 @@ Run the `build` script to verify the worktree compiles cleanly. If it fails, sto
 
 ### 11. Read the context file
 
-Look for `.context.{slug}.md` in the worktree root. If found, extract:
+Look for `.context.{slug}.md` in the worktree root (schema: `~/.claude/workflow/_state-file.md`).
+If found, extract:
 - Doc path, branch name, type, description, merge-into branch
 - Any `## Progress` section (paused state from a previous session)
 
@@ -167,106 +177,31 @@ Compare doc steps and acceptance criteria against:
 - Commits on the branch (`git -C {worktree} log --oneline {merge-into}..HEAD`)
 - Current state of the code in the worktree
 
-Identify which steps are already complete and which remain.
-
-### 16. Group remaining steps
-
-Group steps by natural clusters:
-- Use `####` subsections or phase headings if present in the doc.
-- Group by file/module if steps reference distinct areas.
-- Otherwise, treat each step as its own group.
-
-### 17. Print the plan
-
-```
-Remaining: {R} steps across {G} groups
-
-### Group 1: {group name}
-1. {step summary}
-
-### Group 2: {group name}
-2. {step summary}
-...
-```
-
-Then tell the user: "I'll implement each remaining step, show you the diff, and wait for your OK before committing."
-
-If all steps appear complete, tell the user and jump to Phase 6.
+Identify which steps are already complete and which remain. If all steps appear complete, tell the
+user and jump straight to final verification.
 
 ---
 
-## Phase 6: Interactive Step-by-Step Implementation
+## Phase 6: Run the implementation loop
 
-For each remaining step, in order:
+Set **`$MODE = interactive`** and run the shared loop in
+**`~/.claude/workflow/_interactive-loop.md`**, scoped to the **remaining** steps from Phase 5:
 
-### 18. Announce the step
+1. **Group the remaining steps** and **print the plan** (`Remaining: {R} steps across {G} groups`,
+   group names, per-step summaries), then tell the user: "I'll implement each remaining step, show
+   you the diff, and wait for your OK before committing."
+2. **Per-step procedure** — announce (`→ Step {n}/{R} ...`) → implement → show diff →
+   **AskUserQuestion** checkpoint (`Commit & continue` / `Revise` / `Skip commit` / `Abort`) →
+   commit on approval. On `Abort`, print `/implement-continue {slug}` to resume later. Error
+   recovery: up to 3 fixes, then `Retry` / `Skip step` / `Abort`.
+3. **Final verification** — update the doc status and acceptance criteria; run `build` (required),
+   `lint`, and `test`; then present the final report.
 
-One line: `→ Step {n}/{R} ({group name}): {step summary}`.
+Commits follow **`~/.claude/workflow/_commit-conventions.md`**.
 
-### 19. Implement the step
+### Final report contents
 
-- Read relevant files in the worktree (absolute paths).
-- Follow existing patterns — check the worktree's `CLAUDE.md` if present.
-- Make the code changes with Edit/Write.
-- Do NOT stage or commit yet.
-
-**Always** use `git -C {worktree}` / absolute paths. Never chain commands with `&&`, `||`, or `;`.
-
-### 20. Show the diff
-
-Run `git -C {worktree} status` and `git -C {worktree} diff` (plus `git -C {worktree} diff --stat`). Display to the user. Summarize in 1–3 sentences what changed and why.
-
-### 21. Ask the user to verify
-
-Use **AskUserQuestion** with:
-
-- Question: `Step {n}/{R} — {step summary}. Commit these changes and continue?`
-- Options:
-  - `Commit & continue` — stage changes, commit with conventional commit format, proceed.
-  - `Revise` — user describes changes; do not commit. Apply revision, re-show diff, re-ask.
-  - `Skip commit` — leave uncommitted, move on (warn that state carries into next step's diff).
-  - `Abort` — stop. Print: `/implement-continue {slug}` to resume again later.
-
-### 22. On `Commit & continue`
-
-- Stage only the files changed in this step (`git -C {worktree} add {files}`).
-- Commit with `type(scope): description` format.
-  - Single-line: `git -C {worktree} commit -m "..."`.
-  - Multi-line: write to `/tmp/commit-msg.txt`, then `git -C {worktree} commit -F /tmp/commit-msg.txt`. Never use HEREDOC or `$()`.
-- Proceed to the next step.
-
-### 23. Error recovery
-
-If implementation fails:
-- Attempt up to 3 fixes.
-- If still broken, surface the error via **AskUserQuestion**: `Retry`, `Skip step`, `Abort`.
-- Do NOT loop indefinitely.
-
----
-
-## Phase 7: Final Verification
-
-### 24. Update documentation
-
-- If ALL acceptance criteria are met → set `**Status:**` to `Done`.
-- If SOME are met → set `**Status:**` to `In Progress`.
-- Check off newly completed `- [ ]` criteria.
-- Show diff, ask user to confirm, then commit: `docs: update status and acceptance criteria`.
-
-### 25. Build / lint / test
-
-Run from `package.json` scripts using the detected package manager:
-- `build` (required)
-- `lint` (if script exists)
-- `test` (if script exists)
-
-Show results. If any fail, attempt fixes (up to 3 total) with the same verify-before-commit pattern.
-
-### 26. Present final report
-
-Print:
-- Worktree path and branch name
-- `cd .claude/worktrees/{slug}`
+- Worktree path and branch name, plus `cd .claude/worktrees/{slug}`
 - Summary of what was implemented this session (grouped, matching Phase 5)
 - Commits this session / total on branch
 - Acceptance criteria: passed / outstanding
@@ -274,6 +209,9 @@ Print:
 - Next: `/stage` when ready
 - Cleanup: `git worktree remove .claude/worktrees/{slug}`
 
-### 27. Compact the conversation
+---
 
-After presenting the final report, invoke the `/compact` command to compress the conversation context. This conserves daily rate limit usage.
+## Phase 7: Compact the conversation
+
+After presenting the final report, invoke the `/compact` command to compress the conversation
+context. This conserves daily rate limit usage.
