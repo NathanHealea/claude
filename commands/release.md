@@ -12,22 +12,11 @@ No arguments required. Run from inside the worktree created by `/implement`.
 
 ## Context Detection
 
-### 1. Detect remote type
+Detect project configuration by reading and following
+**`~/.claude/workflow/_context-detection.md`**. Run these routines and store the results:
 
-1. Read the project's `CLAUDE.md` and look for a `## Workflow` section. If it contains a **Remote type** field, use that value (`github` or `bitbucket`).
-2. If no `## Workflow` section exists, detect from the git remote:
-   - Run `git remote get-url origin`
-   - If URL contains `github.com` → **github**
-   - If URL contains `bitbucket` → **bitbucket**
-   - Check `CLAUDE.md` `## Workflow` for a **Bitbucket hosts** field. If the remote URL hostname matches any listed host → **bitbucket**
-   - Otherwise → **unknown**
-3. Store as **`$REMOTE_TYPE`**.
-
-### 2. Detect docs directory
-
-1. Read `CLAUDE.md` `## Workflow` for a **Docs directory** field. If found, use it.
-2. Otherwise: `documents/` if it exists, then `docs/` if it exists, then default `docs`.
-3. Store as **`$DOCS_DIR`**.
+- **Detect remote type** → `$REMOTE_TYPE` (`github`, `bitbucket`, or `unknown`)
+- **Detect docs directory** → `$DOCS_DIR`
 
 ---
 
@@ -35,7 +24,9 @@ No arguments required. Run from inside the worktree created by `/implement`.
 
 ### 1. Locate the context file
 
-Find the `.context.*.md` file in the current working directory. There should be exactly one. If none is found, stop and tell the user this command must be run from inside a worktree created by `/implement`.
+Find the `.context.*.md` file in the current working directory (schema:
+`~/.claude/workflow/_state-file.md`). There should be exactly one. If none is found, stop and tell
+the user this command must be run from inside a worktree created by `/implement`.
 
 Read the context file and extract from the `## Staged` section:
 

@@ -12,38 +12,13 @@ No arguments required. Run from inside the feature branch (main repo or worktree
 
 ## Context Detection
 
-### 1. Detect remote type
+Detect project configuration by reading and following
+**`~/.claude/workflow/_context-detection.md`**. Run these routines and store the results:
 
-1. Read the project's `CLAUDE.md` and look for a `## Workflow` section. If it contains a **Remote type** field, use that value (`github` or `bitbucket`).
-2. If no `## Workflow` section exists, detect from the git remote:
-   - Run `git remote get-url origin`
-   - If URL contains `github.com` → **github**
-   - If URL contains `bitbucket` → **bitbucket**
-   - Check `CLAUDE.md` `## Workflow` for a **Bitbucket hosts** field. If the remote URL hostname matches any listed host → **bitbucket**
-   - Otherwise → **unknown** (fallback to manual)
-3. Store as **`$REMOTE_TYPE`**.
-
-### 2. Detect PR template preference
-
-1. Read `CLAUDE.md` `## Workflow` for a **PR template** field.
-2. If found → store as **`$PR_TEMPLATE`** (`github-default`, `bitbucket-uo`, or `custom`).
-3. If not found → infer from `$REMOTE_TYPE`:
-   - `github` → `github-default`
-   - `bitbucket` → `bitbucket-uo`
-   - `unknown` → `github-default`
-
-### 3. Detect docs directory
-
-1. Read `CLAUDE.md` `## Workflow` for a **Docs directory** field. If found, use it.
-2. Otherwise: `documents/` if it exists, then `docs/` if it exists, then default `docs`.
-3. Store as **`$DOCS_DIR`**.
-
-### 4. Detect merge target
-
-1. Find the `.context.*.md` file in the current working directory.
-2. If found, read the **Merge Into** field. Store as **`$MERGE_TARGET`**.
-3. If no context file or no **Merge Into** field → check `CLAUDE.md` `## Workflow` for a **Default merge target** field.
-4. If still not found → default to `main`.
+- **Detect remote type** → `$REMOTE_TYPE` (`github`, `bitbucket`, or `unknown`)
+- **Detect PR template preference** → `$PR_TEMPLATE`
+- **Detect docs directory** → `$DOCS_DIR`
+- **Detect merge target** → `$MERGE_TARGET`
 
 ---
 
@@ -108,7 +83,10 @@ npm version <major|minor|patch> --no-git-tag-version
 
 ### 6. Commit all changes
 
-Stage all changes (including the version bump if done) and create a commit. The commit message should summarize the work on this branch — look at the branch name, changed files, and recent commits on the branch to write a descriptive message using conventional commit format.
+Stage all changes (including the version bump if done) and create a commit following
+**`~/.claude/workflow/_commit-conventions.md`**. The commit message should summarize the work on
+this branch — look at the branch name, changed files, and recent commits on the branch to write a
+descriptive message using conventional commit format.
 
 If a version bump was done, include the version number:
 
@@ -227,7 +205,8 @@ Write the PR body to `/tmp/pr-body.txt` using the GitHub default format. Print t
 
 ### 9. Update the context file
 
-Find the `.context.*.md` file in the current working directory. If one exists, append a `## Staged` section:
+Find the `.context.*.md` file in the current working directory (schema:
+`~/.claude/workflow/_state-file.md`). If one exists, append a `## Staged` section:
 
 ```markdown
 ## Staged

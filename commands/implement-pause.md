@@ -12,7 +12,8 @@ No arguments. Context is detected automatically from the current worktree.
 
 ### 1. Detect current implementation
 
-Locate the active implementation context:
+Locate the active implementation context (`.context.*.md` schema:
+`~/.claude/workflow/_state-file.md`):
 - If inside a worktree, find `.context.*.md` in the worktree root.
 - Otherwise, search `.claude/worktrees/*/` for `.context.*.md` files. If exactly one is found, use it. If multiple are found, list them and ask the user to pick one via **AskUserQuestion**.
 - If none is found, stop and tell the user: no active implementation was detected.
@@ -44,7 +45,7 @@ Read the doc file at `{doc-path}`. Look for a `**Branch:**` field in the documen
 
   Place it alongside the other metadata fields (after `**Type:**` if present, otherwise after the first `**...**` metadata line).
 
-  After editing the doc, commit the change from the **main repo** (not the worktree), since the doc file lives outside the worktree:
+  After editing the doc, commit the change from the **main repo** (not the worktree), since the doc file lives outside the worktree (commit rules: `~/.claude/workflow/_commit-conventions.md`):
 
   ```
   git add {doc-path}

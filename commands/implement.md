@@ -1,6 +1,12 @@
 # Implement
 
-Set up a worktree and execute the implementation plan from a documentation file **interactively**. The full step list is displayed grouped upfront, and you verify the diff before each commit.
+Set up a worktree and execute the implementation plan from a documentation file
+**interactively**. The full step list is displayed grouped upfront, and you verify the diff
+before each commit.
+
+This command runs the shared implementation loop in **`interactive`** mode — see
+**`~/.claude/workflow/_interactive-loop.md`**. Shared behavior (branch naming, the context-file
+schema, commit conventions) lives in the `~/.claude/workflow/` modules referenced below.
 
 ## Input
 
@@ -12,7 +18,8 @@ Required: a **path to a documentation file** created by `/plan`:
 /implement <path/to/doc.md>
 ```
 
-If no arguments are provided, stop and tell the user to provide a doc file path. Suggest running `/plan` first if they don't have one.
+If no arguments are provided, stop and tell the user to provide a doc file path. Suggest running
+`/plan` first if they don't have one.
 
 ---
 
@@ -35,21 +42,21 @@ Read the `.md` file and extract:
 - **Acceptance Criteria** — from `## Acceptance Criteria`
 - **Key Files** — from `### Key Files` (if present)
 
-Verify the doc has an `### Implementation Steps` or `### Approach` section. If not, stop and tell the user the doc needs an implementation plan. Suggest they run `/plan {doc-path}` to add one.
+Verify the doc has an `### Implementation Steps` or `### Approach` section. If not, stop and tell
+the user the doc needs an implementation plan. Suggest they run `/plan {doc-path}` to add one.
 
 #### Determine the branch name
 
-If the doc has a **Branch** field with a non-empty value → use it directly as the branch name.
-
-Otherwise, derive the branch name from the doc type and filename:
-
-1. Generate the **branch slug** from the doc filename (strip `.md`, e.g., `admin-profile-linking.md` → `admin-profile-linking`).
-2. Use the doc type (lowercased) as the branch prefix (`feature` → `feature/`, `bug` → `bug/`, `refactor` → `refactor/`, `hotfix` → `hotfix/`). If type is missing, default to `feature/`.
-3. Combine: `{type}/{branch-slug}`.
+Resolve the branch name and **branch slug** by following
+**`~/.claude/workflow/_branch-naming.md`** (doc **Branch** field if present, otherwise
+`{type}/{branch-slug}` derived from the doc type and filename). The branch slug is reused for the
+worktree directory and the context filename below.
 
 ### 2. Pre-flight check
 
-- Confirm we are on `main` (or the repo's default branch). If not and there are no uncommitted changes, automatically switch to `main`. If there are uncommitted changes, stop and tell the user to commit or stash first.
+- Confirm we are on `main` (or the repo's default branch). If not and there are no uncommitted
+  changes, automatically switch to `main`. If there are uncommitted changes, stop and tell the
+  user to commit or stash first.
 - Run `git pull` to ensure `main` is up to date.
 
 ### 3. Create the worktree
@@ -61,150 +68,59 @@ git worktree add .claude/worktrees/{branch-slug} -b {branch-name}
 
 ### 4. Create the context file
 
-Create `.context.{branch-slug}.md` in the worktree root:
-
-```markdown
-# Context: {Doc Title}
-
-- **Type**: {type}
-- **Branch**: {branch-name}
-- **Merge Into**: {merge-into}
-- **Doc directory**: {doc directory}
-- **Created**: {current date YYYY-MM-DD}
-
-## Description
-
-{Summary from the doc file}
-
-## Documentation
-
-- **Doc path**: {absolute path to the doc file}
-```
+Create `.context.{branch-slug}.md` in the worktree root using the **base section** schema in
+**`~/.claude/workflow/_state-file.md`** (Context heading; Type, Branch, Merge Into, Doc directory,
+Created date; Description; Documentation → Doc path). This file is the state contract consumed by
+`/implement-pause`, `/implement-continue`, `/stage`, and `/release`.
 
 ### 5. Copy config + install deps + baseline build
 
 From the main conversation, in the worktree:
 
-- Copy (only if present): `CLAUDE.md`, `.claude/` directory, `.mcp.json`, all `.env*` files.
-- Detect package manager from lockfile and install: `bun.lockb` → `bun install`, `pnpm-lock.yaml` → `pnpm install`, `yarn.lock` → `yarn install`, `package-lock.json`/`package.json` → `npm install`. Otherwise skip.
-- Run the `build` script to verify a clean baseline. If it fails, stop — do not attempt implementation on a broken base.
+- Copy (only if present): `CLAUDE.md`, `.claude/` directory, `.mcp.json`, all root `.env*` files,
+  and all `supabase/.env*` files (preserving the `supabase/` subdirectory path in the worktree).
+- Detect package manager from lockfile and install: `bun.lockb` → `bun install`,
+  `pnpm-lock.yaml` → `pnpm install`, `yarn.lock` → `yarn install`,
+  `package-lock.json`/`package.json` → `npm install`. Otherwise skip.
+- Run the `build` script to verify a clean baseline. If it fails, stop — do not attempt
+  implementation on a broken base.
 
-**Always** use `git -C {worktree}` / `--prefix {worktree}` / absolute paths. Never chain commands with `&&`, `||`, or `;`.
-
----
-
-## Phase 2: Display grouped plan
-
-Before touching any code, print a grouped overview of the work so the user sees the full scope.
-
-### 6. Group the implementation steps
-
-Group steps by natural clusters from the doc:
-- If the doc uses `####` subsections or phase headings → use those as groups.
-- If steps reference distinct files/modules → group by file/module.
-- If steps are flat and unrelated → treat each step as its own single-step group.
-
-### 7. Print the plan to the terminal
-
-Display in this format (plain markdown, rendered directly in chat):
-
-```
-## Implementation plan: {Doc Title}
-
-Branch: {branch-name}
-Worktree: .claude/worktrees/{branch-slug}
-Total steps: {N} across {G} groups
-
-### Group 1: {group name}
-1. {step 1 summary}
-2. {step 2 summary}
-
-### Group 2: {group name}
-3. {step 3 summary}
-...
-```
-
-Then tell the user: "I'll implement each step, show you the diff, and wait for your OK before committing."
+**Always** use `git -C {worktree}` / `--prefix {worktree}` / absolute paths. Never chain commands
+with `&&`, `||`, or `;` (see `~/.claude/workflow/_commit-conventions.md`).
 
 ---
 
-## Phase 3: Interactive step-by-step implementation
+## Phase 2: Run the implementation loop
 
-For each step, in order:
+Set **`$MODE = interactive`** and run the shared loop in
+**`~/.claude/workflow/_interactive-loop.md`**:
 
-### 8. Announce the step
+1. **Group the steps** and **print the grouped plan** (total steps, group names, per-step
+   summaries, branch, worktree path), then tell the user: "I'll implement each step, show you the
+   diff, and wait for your OK before committing."
+2. **Per-step procedure** — announce → implement → show diff → **AskUserQuestion** checkpoint
+   (`Commit & continue` / `Revise` / `Skip commit` / `Abort`) → commit on approval. On `Abort`,
+   print the resume command `/implement-continue {branch-slug}`. Error recovery: up to 3 fixes,
+   then `Retry` / `Skip step` / `Abort`.
+3. **Final verification** — update the doc status and acceptance criteria; run `build` (required),
+   `lint`, and `test`; then present the final report.
 
-One line before starting: `→ Step {n}/{N} ({group name}): {step summary}`.
+Commits follow **`~/.claude/workflow/_commit-conventions.md`** (`type(scope): description`, stage
+only the step's files, no co-author trailer).
 
-### 9. Implement the step
+### Final report contents
 
-- Read relevant files in the worktree (absolute paths).
-- Follow existing patterns — check the worktree's `CLAUDE.md` if present.
-- Make the code changes with Edit/Write.
-- Do NOT stage or commit yet.
-
-### 10. Show the diff
-
-Run `git -C {worktree} status` and `git -C {worktree} diff` (and `git -C {worktree} diff --stat` for context). Display the output to the user. Summarize in 1-3 sentences what changed and why.
-
-### 11. Ask the user to verify
-
-Use **AskUserQuestion** with:
-
-- Question: `Step {n}/{N} — {step summary}. Commit these changes and continue?`
-- Options:
-  - `Commit & continue` — stage changes, commit with conventional commit format, proceed to next step.
-  - `Revise` — user will describe changes; do not commit. Apply the revision, re-show diff, re-ask.
-  - `Skip commit` — leave changes uncommitted, move to next step anyway (rare; warn that state will carry into the next step's diff).
-  - `Abort` — stop the whole `/implement` run. Print instructions for resuming via `/implement-continue {branch-slug}`.
-
-### 12. On `Commit & continue`
-
-- Stage only the files changed in this step (`git -C {worktree} add {files}`).
-- Commit with `type(scope): description` format.
-  - Single-line: `git -C {worktree} commit -m "..."`.
-  - Multi-line: write to `/tmp/commit-msg.txt`, then `git -C {worktree} commit -F /tmp/commit-msg.txt`. Never use HEREDOC or `$()`.
-- Proceed to the next step.
-
-### 13. Error recovery during a step
-
-If implementation fails (syntax error, test fails, etc.):
-- Attempt up to 3 fixes.
-- If still broken, surface the error to the user via AskUserQuestion with options: `Retry`, `Skip step`, `Abort`.
-- Do NOT loop indefinitely.
-
----
-
-## Phase 4: Final verification
-
-### 14. Update documentation
-
-- If ALL acceptance criteria are met → set `**Status:**` to `Done`.
-- If SOME are met → set `**Status:**` to `In Progress`.
-- Check off completed `- [ ]` criteria.
-- Show diff, ask user to confirm (same verification pattern as Phase 3), then commit: `docs: update status and acceptance criteria`.
-
-### 15. Build / lint / test
-
-Run from `package.json` scripts using the detected package manager:
-- `build` (required)
-- `lint` (if script exists)
-- `test` (if script exists)
-
-Show results to the user. If any fail, attempt fixes (up to 3 total) with the same verification pattern before committing.
-
-### 16. Present final report
-
-Print:
-- Worktree path and branch name
-- `cd .claude/worktrees/{branch-slug}`
-- Summary of what was implemented (grouped, matching Phase 2)
+- Worktree path and branch name, plus `cd .claude/worktrees/{branch-slug}`
+- Summary of what was implemented (grouped, matching the printed plan)
 - Commit count
 - Acceptance criteria: passed / outstanding
 - Build / lint / test status
 - Next: `/stage` when ready
 - Cleanup: `git worktree remove .claude/worktrees/{branch-slug}`
 
-### 17. Compact the conversation
+---
 
-After presenting the final report, invoke the `/compact` command to compress the conversation context. This conserves daily rate limit usage.
+## Phase 3: Compact the conversation
+
+After presenting the final report, invoke the `/compact` command to compress the conversation
+context. This conserves daily rate limit usage.
