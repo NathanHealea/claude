@@ -1,0 +1,65 @@
+# --- Claude Code runtime state (machine-local, regenerated) ---
+sessions/
+projects/
+history.jsonl
+todos/
+statsig/
+shell-snapshots/
+session-env/
+ide/
+cache/
+paste-cache/
+backups/
+file-history/
+.last-cleanup
+.last-update-result.json
+policy-limits.json
+policy-limits.json.stamp.json
+remote-settings.json
+
+# Machine-local overrides; settings.json stays tracked
+settings.local.json
+.credentials.json
+*.local.json
+
+# Installed plugin payloads
+plugins/
+
+# --- macOS ---
+.DS_Store
+.DS_Store?
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+.fseventsd
+.DocumentRevisions-V100
+.TemporaryItems
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.apdisk
+Icon?
+
+# --- Windows ---
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+*.stackdump
+
+# --- Linux ---
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# --- Editors / misc ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
