@@ -22,34 +22,14 @@ If no arguments are provided, ask the user for the work type and description.
 
 ## Context Detection (run before any mode)
 
-Before executing any mode, detect project-specific configuration. These values are used throughout the command.
+Before executing any mode, detect project-specific configuration by reading and following the
+routines in **`~/.claude/workflow/_context-detection.md`** (your global Claude config). Run these
+routines and store the results — they are used throughout the command:
 
-### 1. Detect the docs directory
-
-1. Read the project's `CLAUDE.md` and look for a `## Workflow` section. If it contains a **Docs directory** field, use that value.
-2. If no `## Workflow` section exists, check the filesystem:
-   - If a `documents/` directory exists at the project root → use `documents`
-   - If a `docs/` directory exists at the project root → use `docs`
-   - Otherwise → default to `docs`
-3. Store this as **`$DOCS_DIR`** for use in all subsequent steps.
-
-### 2. Detect testing conventions
-
-1. Read the project's `CLAUDE.md` and look for a `## Testing` section.
-2. If found → store the full section content as **`$TEST_GUIDANCE`** (framework, test location, naming, mocking, what to test, what not to test).
-3. If not found → scan the codebase for existing test files (`*.test.*`, `*.spec.*`, `__tests__/`, `tests/`). Infer the framework and conventions from what exists. Store as **`$TEST_GUIDANCE`**.
-4. If no test files exist either → set **`$TEST_GUIDANCE`** to empty. The unit test section will be skipped in plans.
-
-### 3. Parse optional flags
-
-Scan `$ARGUMENTS` for these optional flags (can appear anywhere in the input). Remove each flag and its value from the arguments before further parsing.
-
-- `--branch <name>` — Explicit git branch name for this feature.
-- `--merge-into <name>` — Target branch for the PR created by `/stage`.
-
-Store as:
-- **`$BRANCH_OVERRIDE`** — the explicit branch name, or empty if not provided.
-- **`$MERGE_INTO`** — the target branch. Resolution order: (1) `--merge-into` flag value, (2) **Default merge target** from `CLAUDE.md` `## Workflow` section, (3) `main`.
+- **Detect the docs directory** → `$DOCS_DIR`
+- **Detect testing conventions** → `$TEST_GUIDANCE` (if empty, unit-test sections are skipped in plans)
+- **Parse optional flags** → `$BRANCH_OVERRIDE` (from `--branch`), and feed `--merge-into` into the next routine
+- **Detect merge target** → `$MERGE_INTO`
 
 ---
 
@@ -260,7 +240,7 @@ Set the following values for use in later steps:
 - **Extra context**: Anything after `--` (if provided)
 - **Doc slug**: The generated kebab-case slug
 - **Doc directory**: The determined epic directory (e.g. `$DOCS_DIR/seasons/`, `$DOCS_DIR/other/`)
-- **Branch**: If `$BRANCH_OVERRIDE` is set, use it. Otherwise derive as `{type}/{doc-slug}` — the branch prefix matches the doc type exactly (e.g., `feature/admin-season-delete`, `bug/login-crash`, `refactor/auth-cleanup`).
+- **Branch**: Resolve by following **`~/.claude/workflow/_branch-naming.md`** — `$BRANCH_OVERRIDE` if set, otherwise `{type}/{doc-slug}` (prefix matches the doc type exactly, e.g. `feature/admin-season-delete`, `bug/login-crash`, `refactor/auth-cleanup`).
 - **Merge into**: `$MERGE_INTO`
 
 #### 3. Explore the codebase

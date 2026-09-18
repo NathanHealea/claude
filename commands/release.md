@@ -12,22 +12,11 @@ No arguments required. Run from inside the worktree created by `/implement`.
 
 ## Context Detection
 
-### 1. Detect remote type
+Detect project configuration by reading and following
+**`~/.claude/workflow/_context-detection.md`**. Run these routines and store the results:
 
-1. Read the project's `CLAUDE.md` and look for a `## Workflow` section. If it contains a **Remote type** field, use that value (`github` or `bitbucket`).
-2. If no `## Workflow` section exists, detect from the git remote:
-   - Run `git remote get-url origin`
-   - If URL contains `github.com` → **github**
-   - If URL contains `bitbucket` → **bitbucket**
-   - Check `CLAUDE.md` `## Workflow` for a **Bitbucket hosts** field. If the remote URL hostname matches any listed host → **bitbucket**
-   - Otherwise → **unknown**
-3. Store as **`$REMOTE_TYPE`**.
-
-### 2. Detect docs directory
-
-1. Read `CLAUDE.md` `## Workflow` for a **Docs directory** field. If found, use it.
-2. Otherwise: `documents/` if it exists, then `docs/` if it exists, then default `docs`.
-3. Store as **`$DOCS_DIR`**.
+- **Detect remote type** → `$REMOTE_TYPE` (`github`, `bitbucket`, or `unknown`)
+- **Detect docs directory** → `$DOCS_DIR`
 
 ---
 
@@ -35,7 +24,9 @@ No arguments required. Run from inside the worktree created by `/implement`.
 
 ### 1. Locate the context file
 
-Find the `.context.*.md` file in the current working directory. There should be exactly one. If none is found, stop and tell the user this command must be run from inside a worktree created by `/implement`.
+Find the `.context.*.md` file in the current working directory (schema:
+`~/.claude/workflow/_state-file.md`). There should be exactly one. If none is found, stop and tell
+the user this command must be run from inside a worktree created by `/implement`.
 
 Read the context file and extract from the `## Staged` section:
 
@@ -89,8 +80,13 @@ Only applicable for **github** remote type. Bitbucket and unknown require manual
 #### GitHub
 
 ```bash
-gh pr merge {PR number} --squash --delete-branch
+gh pr merge {PR number} --merge --delete-branch
 ```
+
+`--merge` creates a **merge commit** — the `--no-ff` equivalent for `gh`, which has no
+`--no-ff` flag of its own. Use it, not `--squash` or `--rebase`: gitflow history is a readable
+chain of `Merge branch '<branch>'` commits, and both of the alternatives flatten the feature's
+commits into the target and destroy that chain.
 
 The `--delete-branch` flag removes the remote branch automatically after merge.
 
@@ -106,8 +102,15 @@ Determine the main worktree path from `git worktree list` (the first entry) and 
 
 ```bash
 git -C {main-worktree-path} checkout {merge-into}
-git -C {main-worktree-path} pull
+git -C {main-worktree-path} pull --ff-only
 ```
+
+`--ff-only` is deliberate and is *not* in tension with the `--no-ff` merge above. These are two
+different operations: step 3 merges the feature into the target and must record a merge commit;
+step 4 only catches a stale local branch up to a remote that already has it. That should always
+be a clean fast-forward. If `--ff-only` refuses, the local target has diverged from the remote —
+stop and report it rather than letting `pull` silently synthesise a merge commit that nobody
+reviewed.
 
 ### 4b. Tag the merged commit
 
