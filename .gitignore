@@ -1,55 +1,131 @@
 # ============================================
-# Claude Code .gitignore
-# Track: commands, settings, plugin config
-# Ignore: history, sessions, caches, projects
+# Claude Code (~/.claude) .gitignore
+#
+# Track:  commands/, agents/, skills/ (authored),
+#         workflow/, CLAUDE.md, README.md
+# Ignore: settings, credentials, history, sessions,
+#         caches, projects, synced/downloaded content
 # ============================================
 
-# --- Conversation & session history ---
+# --------------------------------------------
+# Settings & credentials (machine-specific)
+# --------------------------------------------
+settings.json
+settings.local.json
+managed-settings.json
+remote-settings.json
+.credentials.json
+.claude.json
+.claude.json.backup
+keybindings.json
+statusline.sh
+config.json
+*.local.json
+
+# Policy / entitlement state
+policy-limits.json
+*.stamp.json
+
+# --------------------------------------------
+# Conversation & session history
+# --------------------------------------------
 history.jsonl
 sessions/
 session-env/
 file-history/
 shell-snapshots/
+transcripts/
+logs/
+*.log
 
-# --- Project-specific context & memory ---
-# Contains per-project memory, CLAUDE.md overrides,
-# and machine-specific paths encoded in directory names
+# --------------------------------------------
+# Project-specific context & memory
+# Per-project memory, CLAUDE.md overrides, and
+# machine-specific paths encoded in dir names
+# --------------------------------------------
 projects/
+memory/
 
-# --- Session-scoped work tracking ---
+# --------------------------------------------
+# Session-scoped work tracking
+# --------------------------------------------
 tasks/
 todos/
 plans/
+worktrees/
+scratchpad/
 
-# --- Caches & ephemeral state ---
+# --------------------------------------------
+# Caches & ephemeral state
+# --------------------------------------------
 cache/
 image-cache/
 paste-cache/
 debug/
 downloads/
 backups/
+tmp/
 stats-cache.json
-
-# --- Telemetry & analytics ---
+statsig/
 telemetry/
-
-# --- IDE integration ---
-ide/
-
-# --- Auth & runtime state ---
+analytics/
+.last-cleanup
+.last-update-result.json
 mcp-needs-auth-cache.json
-policy-limits.json
-.credentials.json
+mcp-logs*/
 
-# --- Lock files ---
-*.lock
+# --------------------------------------------
+# IDE integration & runtime
+# --------------------------------------------
+ide/
+versions/
+local/
 
-# --- Downloaded plugin marketplaces (fetched from remote) ---
+# --------------------------------------------
+# Plugins — authored config tracked,
+# downloaded/synced content ignored
+# --------------------------------------------
 plugins/marketplaces/
+plugins/repos/
+plugins/cache/
+plugins/synced/
 known_marketplaces.json
 
-# --- Work-specific commands (not shareable) ---
+# --------------------------------------------
+# Skills & agents — authored tracked,
+# synced/bundled content ignored
+# --------------------------------------------
+skills/synced/
+agents/synced/
+.bucket-*
+
+# --------------------------------------------
+# Work-specific commands (not shareable)
+# --------------------------------------------
 commands/work-*
 
-# --- OS artifacts ---
+# --------------------------------------------
+# Lock files & dependencies
+# --------------------------------------------
+*.lock
+node_modules/
+.npm/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# --------------------------------------------
+# OS & editor artifacts
+# --------------------------------------------
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
