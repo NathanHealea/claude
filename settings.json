@@ -1,4 +1,7 @@
 {
+  "enabledPlugins": {
+    "i-have-adhd@synced": true
+  },
   "extraKnownMarketplaces": {
     "addy-agent-skills": {
       "source": {
