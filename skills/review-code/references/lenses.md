@@ -81,7 +81,7 @@ If ESLint, Ruff, Prettier, or an equivalent is configured, run it and report wha
 - **Smallest change that solves the problem.** A fix that arrives with an unrelated refactor, rename, or dependency bump bundled in.
 - **No new dependency without asking.** A package pulled in for something the standard library covers.
 - **Errors handled explicitly, no catch-all that swallows.** See the correctness lens.
-- **Comments explain why, not what.** A comment restating the line below it is noise; a missing comment on a non-obvious decision is the real defect.
+- **No comment by default.** A comment belongs only where the code cannot carry it: why this approach over the obvious one, a constraint or bug being worked around, an invariant the types do not state, or a deliberate break from convention. A comment restating, narrating, or labeling the code is a finding; so is a banner block, a comment above every function, or one longer than two lines. A missing comment on a non-obvious decision is also a finding.
 - **No commented-out code.** It is deleted, not left in.
 - **No hardcoded secrets, tokens, connection strings, or the user's email.** Environment variables, and the review says which ones need setting.
 - **Tests exist where the project asks for them.** Missing coverage is a finding only if the project requires it. Otherwise say what you would test, in one line, outside the findings.

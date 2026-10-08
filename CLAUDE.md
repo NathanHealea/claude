@@ -55,7 +55,10 @@ Apply the section matching the current task. Ignore the others.
 - Make the smallest change that solves the problem. Never bundle refactors, renames, or dependency bumps into an unrelated fix.
 - Add no new dependency without asking. Prefer the standard library.
 - Handle errors explicitly. No catch-all that swallows. Fail loudly and early.
-- Write comments that explain why, not what. Delete commented-out code instead of leaving it.
+- Default to no comment. Add one only for what the code cannot carry: why this approach over the obvious one, a constraint or bug being worked around (name the ticket, spec, or version), a unit or invariant the types do not state, or a deliberate break from convention.
+- Never restate the code, narrate steps, or label sections. If a comment explains what a line does, rename the thing or extract a function instead.
+- One line, two at most. No banner blocks, no comment above every function. Write a docstring only where the language or a public API expects one, and keep it to the contract: arguments, return, raises.
+- Delete commented-out code instead of leaving it. When you change code, update or delete the comment above it in the same edit.
 - Do not write tests I did not ask for, but tell me what you would test.
 - When something breaks, find the root cause. Never add a retry, a sleep, or a special case to hide the symptom.
 - Never hardcode secrets, tokens, connection strings, or my email. Use environment variables and tell me which to set.
@@ -127,3 +130,7 @@ Applies when an operation runs across many files, rows, or records.
 - Never modify a file outside the scope I gave you.
 - Treat student, HR, and personnel data as sensitive. Never copy it into logs, examples, prompts, or files that leave where it lives.
 - Send nothing of mine to a third-party service I did not name.
+
+# graphify
+- **graphify** (`~/.claude/skills/graphify/SKILL.md`) - any input to knowledge graph. Trigger: `/graphify`
+When the user types `/graphify`, use the installed graphify skill or instructions before doing anything else.
