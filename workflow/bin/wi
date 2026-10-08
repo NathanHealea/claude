@@ -1,0 +1,873 @@
+#!/usr/bin/env bash
+# Work item workflow mechanics. Humans and agents run the same commands; judgment lives in the wi-* skills.
+# Written for bash 3.2 (macOS default): no associative arrays, no mapfile.
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+usage: wi <command> [args]
+
+  config                          print resolved workflow configuration
+  status [doc]                    list work items, or show one
+  new <type> <title> [--epic E] [--slug S]
+                                  create a work item document from the template
+  approve <doc>                   record plan approval                     (human gate)
+  start <doc>                     create branch + worktree, move doc onto the branch
+  next <doc>                      print the first unticked implementation step
+  tick <doc> <n>                  mark implementation step n done
+  log <doc> <message>             append a progress log line
+  verify [--quick]                run verify commands (--quick: test command only)
+  sync <doc>                      commit doc progress, bring branch current with base, verify
+  stage <doc> [--push] [--breaking]
+                                  verify, bump version, commit changelog + version, mark staged
+  pr <doc> --body-file F [--draft]
+                                  open a pull request (review_mode: pr)
+  accept <doc>                    record review approval                   (human gate)
+  reject <doc> <reason>           send a staged item back for changes
+  release <doc> [--yes] [--push]  close out, merge --no-ff, tag the merge, clean up (dry run without --yes)
+
+<doc> is a path or a slug. Exit status is non-zero on any failed check.
+EOF
+}
+
+die() { printf 'wi: %s\n' "$*" >&2; exit 1; }
+say() { printf '%s\n' "$*"; }
+today() { date +%Y-%m-%d; }
+
+resolve_dir() {
+  local p=$1 t
+  while [ -L "$p" ]; do
+    t=$(readlink "$p")
+    case $t in /*) p=$t ;; *) p=$(dirname "$p")/$t ;; esac
+  done
+  cd "$(dirname "$p")" && pwd
+}
+WI_HOME=${WI_HOME:-$(dirname "$(resolve_dir "${BASH_SOURCE[0]}")")}
+
+abspath() { (cd "$(dirname "$1")" && printf '%s/%s\n' "$(pwd)" "$(basename "$1")"); }
+
+# ---------- repository ----------
+
+in_repo() { git rev-parse --show-toplevel >/dev/null 2>&1 || die "not inside a git repository"; }
+main_root() { git worktree list --porcelain | sed -n '1s/^worktree //p'; }
+all_roots() { git worktree list --porcelain | sed -n 's/^worktree //p'; }
+has_remote() { git remote get-url origin >/dev/null 2>&1; }
+
+base_branch() {
+  local b
+  b=$(cfg base_branch "")
+  [ -n "$b" ] && { say "$b"; return; }
+  if b=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null); then say "${b#origin/}"; return; fi
+  for b in main master trunk; do
+    git show-ref --verify --quiet "refs/heads/$b" && { say "$b"; return; }
+  done
+  die "cannot determine the base branch; set base_branch in CLAUDE.md"
+}
+
+# The ref a branch must contain to count as current: origin/<base> when a remote exists.
+base_target() {
+  local base=$1
+  if has_remote && git show-ref --verify --quiet "refs/remotes/origin/$base"; then say "origin/$base"; else say "$base"; fi
+}
+
+# ---------- configuration (## Work Item Workflow in the main checkout's CLAUDE.md) ----------
+
+config_file() { say "$(main_root)/CLAUDE.md"; }
+
+cfg() {
+  local f v=""
+  f=$(config_file)
+  if [ -f "$f" ]; then
+    v=$(awk -v k="$1" '
+      /^## / { insec = ($0 ~ /^## Work Item Workflow[[:space:]]*$/); next }
+      insec {
+        p = "^- " k ":"
+        if ($0 ~ p) { sub(p, ""); sub(/[ \t]+#.*$/, ""); gsub(/^[ \t]+|[ \t]+$/, ""); print; exit }
+      }' "$f")
+  fi
+  printf '%s' "${v:-$2}"
+}
+
+cfg_list() {
+  local f
+  f=$(config_file)
+  [ -f "$f" ] || return 0
+  awk -v k="$1" '
+    /^## / { insec = ($0 ~ /^## Work Item Workflow[[:space:]]*$/); inlist = 0; next }
+    !insec { next }
+    inlist && /^[ \t]+- / { l = $0; sub(/^[ \t]+- /, "", l); sub(/[ \t]+#.*$/, "", l); print l; next }
+    inlist { inlist = 0 }
+    $0 ~ ("^- " k ":[ \t]*(#.*)?$") { inlist = 1 }' "$f"
+}
+
+detect_verify() {
+  local r=$1 pm s
+  if [ -f "$r/package.json" ]; then
+    pm=npm
+    [ -f "$r/pnpm-lock.yaml" ] && pm=pnpm
+    [ -f "$r/yarn.lock" ] && pm=yarn
+    for s in test lint typecheck build; do
+      grep -Eq "\"$s\"[[:space:]]*:" "$r/package.json" && say "$pm run $s"
+    done
+  fi
+  if [ -f "$r/Makefile" ] && grep -Eq '^test:' "$r/Makefile"; then say "make test"; fi
+  if [ -f "$r/pyproject.toml" ]; then
+    grep -q '^\[tool\.pytest' "$r/pyproject.toml" && say "python -m pytest"
+    grep -q '^\[tool\.ruff' "$r/pyproject.toml" && say "ruff check ."
+  fi
+  [ -f "$r/go.mod" ] && say "go test ./..."
+  [ -f "$r/Cargo.toml" ] && say "cargo test"
+  return 0
+}
+
+verify_cmds() {
+  local listed
+  listed=$(cfg_list verify_commands)
+  if [ -n "$listed" ]; then say "$listed"; else detect_verify "$1"; fi
+}
+
+test_cmd() {
+  local t
+  t=$(cfg test_command "")
+  [ -n "$t" ] && { say "$t"; return; }
+  verify_cmds "$1" | grep -m1 -E 'test' || true
+}
+
+# ---------- documents ----------
+
+items_root() { cfg work_items_root docs; }
+
+find_doc() {
+  local q=$1 hits n wroot
+  if [ -f "$q" ]; then abspath "$q"; return; fi
+  wroot=$(items_root)
+  hits=$(all_roots | while IFS= read -r r; do
+    [ -d "$r/$wroot" ] && find "$r/$wroot" -type f -name "*-$q.md" 2>/dev/null
+  done | sort -u)
+  n=$(printf '%s' "$hits" | grep -c . || true)
+  [ "$n" -eq 0 ] && die "no work item matches '$q' under $wroot/ in any worktree"
+  [ "$n" -gt 1 ] && die "'$q' matches more than one document:
+$hits"
+  say "$hits"
+}
+
+doc_root() { git -C "$(dirname "$1")" rev-parse --show-toplevel; }
+doc_rel() { local r; r=$(doc_root "$1"); say "${1#"$r"/}"; }
+
+fm_get() {
+  awk -v k="$2" '
+    NR == 1 && /^---/ { f = 1; next }
+    f && /^---/ { exit }
+    f && index($0, k ":") == 1 { v = substr($0, length(k) + 2); sub(/[ \t]+#.*$/, "", v); gsub(/^[ \t]+|[ \t]+$/, "", v); print v; exit }' "$1"
+}
+
+fm_set() {
+  local tmp
+  tmp=$(mktemp)
+  awk -v k="$2" -v v="$3" '
+    NR == 1 && /^---/ { f = 1; print; next }
+    f && /^---/ { f = 0; if (!done) print k ": " v; print; next }
+    f && index($0, k ":") == 1 { print k ": " v; done = 1; next }
+    { print }' "$1" >"$tmp"
+  cat "$tmp" >"$1"
+  rm -f "$tmp"
+}
+
+doc_title() { awk '/^# / { sub(/^# /, ""); print; exit }' "$1"; }
+
+log_add() {
+  [ -n "$(tail -c1 "$1")" ] && printf '\n' >>"$1"
+  printf -- '- %s — %s\n' "$(today)" "$2" >>"$1"
+}
+
+slugify() {
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//' | cut -d- -f1-5
+}
+
+# Conventional-commit type for the merge commit of a work item.
+commit_type() {
+  local t
+  t=$(fm_get "$1" commit_type)
+  [ -n "$t" ] && { say "$t"; return; }
+  case $(fm_get "$1" type) in story) say feat ;; bug) say fix ;; *) say chore ;; esac
+}
+
+lower_first() { printf '%s' "$1" | awk '{ print tolower(substr($0, 1, 1)) substr($0, 2) }'; }
+
+epic_sync() {
+  local doc=$1 status=$2 epic slug edoc tmp
+  epic=$(fm_get "$doc" epic)
+  [ -z "$epic" ] && return 0
+  slug=$(fm_get "$doc" slug)
+  edoc=$(find_doc "$epic" 2>/dev/null) || { say "note: epic '$epic' not found; its table was not updated"; return 0; }
+  tmp=$(mktemp)
+  awk -F'|' -v OFS='|' -v s="$slug" -v st="$status" '
+    /^\|/ { c = $4; gsub(/^[ \t`]+|[ \t`]+$/, "", c); if (c == s) { $(NF - 1) = " " st " "; hit = 1 } }
+    { print }
+    END { if (!hit) exit 3 }' "$edoc" >"$tmp" && cat "$tmp" >"$edoc" || say "note: no row for '$slug' in $edoc; add one"
+  rm -f "$tmp"
+}
+
+# Clean except for the paths given as extra args (pathspecs relative to $1).
+dirty_except() {
+  local root=$1
+  shift
+  local ex=()
+  local p
+  for p in "$@"; do ex+=(":(exclude)$p"); done
+  git -C "$root" status --porcelain -- . "${ex[@]}"
+}
+
+# ---------- versioning ----------
+
+version_files() {
+  local root=$1 listed
+  listed=$(cfg version_files "")
+  if [ -n "$listed" ]; then
+    printf '%s\n' "$listed" | tr ',' '\n' | sed 's/^ *//; s/ *$//'
+    return
+  fi
+  [ -f "$root/package.json" ] && say package.json
+  [ -f "$root/pyproject.toml" ] && grep -Eq '^version[[:space:]]*=' "$root/pyproject.toml" && say pyproject.toml
+  [ -f "$root/VERSION" ] && say VERSION
+  return 0
+}
+
+read_version() {
+  case $(basename "$1") in
+    package.json) sed -nE 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$1" | head -1 ;;
+    pyproject.toml) sed -nE 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "$1" | head -1 ;;
+    *) tr -d '[:space:]' <"$1" ;;
+  esac
+}
+
+write_version() {
+  local f=$1 v=$2 tmp
+  tmp=$(mktemp)
+  case $(basename "$f") in
+    package.json) awk -v v="$v" '!d && /^[ \t]*"version"[ \t]*:/ { sub(/"version"[ \t]*:[ \t]*"[^"]+"/, "\"version\": \"" v "\""); d = 1 } { print }' "$f" >"$tmp" ;;
+    pyproject.toml) awk -v v="$v" '!d && /^version[ \t]*=/ { $0 = "version = \"" v "\""; d = 1 } { print }' "$f" >"$tmp" ;;
+    *) say "$v" >"$tmp" ;;
+  esac
+  cat "$tmp" >"$f"
+  rm -f "$tmp"
+}
+
+bump() {
+  local v=$1 level=$2 ma mi pa
+  IFS=. read -r ma mi pa <<EOF
+${v%%[-+]*}
+EOF
+  case $level in
+    major) say "$((ma + 1)).0.0" ;;
+    minor) say "$ma.$((mi + 1)).0" ;;
+    *) say "$ma.$mi.$((pa + 1))" ;;
+  esac
+}
+
+# ---------- commands ----------
+
+cmd_config() {
+  in_repo
+  local r
+  r=$(main_root)
+  say "config_file: $(config_file)$([ -f "$(config_file)" ] || printf ' (missing; all defaults)')"
+  say "work_items_root: $(items_root)"
+  say "types: $(cfg types 'epic, story, bug, task')"
+  say "base_branch: $(base_branch)"
+  say "branch_pattern: $(cfg branch_pattern '<type>/<slug>')"
+  say "worktree: $(cfg worktree enabled)"
+  say "worktree_path: $(cfg worktree_path '../<repo>-worktrees/<type>-<slug>')"
+  say "review_mode: $(cfg review_mode report)"
+  say "changelog: $(cfg changelog CHANGELOG.md)"
+  say "version_policy: $(cfg version_policy semver)"
+  say "version_files: $(version_files "$r" | paste -sd, -)"
+  say "tag_pattern: $(cfg tag_pattern 'v<version>')"
+  say "auto_push: $(cfg auto_push false)"
+  say "tdd_agent: $(cfg tdd_agent true)"
+  say "test_command: $(test_cmd "$r")"
+  say "verify_commands:"
+  verify_cmds "$r" | sed 's/^/  - /'
+}
+
+cmd_new() {
+  in_repo
+  [ $# -ge 2 ] || die "usage: wi new <type> <title> [--epic E] [--slug S]"
+  local type=$1 title=$2 epic="" slug=""
+  shift 2
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --epic) epic=$2; shift 2 ;;
+      --slug) slug=$2; shift 2 ;;
+      *) die "unknown option $1" ;;
+    esac
+  done
+  local types
+  types=$(cfg types 'epic, story, bug, task')
+  printf '%s' ", $types," | grep -q ", *$type *," || die "type '$type' is not one of: $types"
+  [ -n "$slug" ] || slug=$(slugify "$title")
+  [ -n "$slug" ] || die "could not derive a slug from '$title'; pass --slug"
+
+  local root wroot rel tpl branch
+  root=$(main_root)
+  wroot=$(items_root)
+  if [ "$type" = epic ]; then
+    rel="$wroot/$slug/epic-$slug.md"
+    tpl=$(cfg epic_template "")
+    [ -n "$tpl" ] && tpl="$root/$tpl" || tpl="$WI_HOME/templates/epic.md"
+  else
+    rel=$(cfg work_item_path '<work_items_root>/<epic>/<type>-<slug>.md')
+    [ -z "$epic" ] && rel=$(say "$rel" | sed 's#<epic>/##')
+    rel=$(say "$rel" | sed "s#<work_items_root>#$wroot#g; s#<epic>#$epic#g; s#<type>#$type#g; s#<slug>#$slug#g")
+    tpl=$(cfg doc_template "")
+    [ -n "$tpl" ] && tpl="$root/$tpl" || tpl="$WI_HOME/templates/work-item.md"
+  fi
+  [ -f "$tpl" ] || die "template not found: $tpl"
+  [ -e "$root/$rel" ] && die "$rel already exists; revise it instead of overwriting"
+  if [ -n "$epic" ] && ! find_doc "$epic" >/dev/null 2>&1; then
+    die "epic '$epic' not found; create it with: wi new epic \"<title>\" --slug $epic"
+  fi
+
+  branch=$(cfg branch_pattern '<type>/<slug>' | sed "s#<type>#$type#g; s#<slug>#$slug#g")
+  mkdir -p "$(dirname "$root/$rel")"
+  awk -v type="$type" -v slug="$slug" -v epic="$epic" -v branch="$branch" -v d="$(today)" -v title="$title" '
+    NR == 1 && /^---/ { f = 1; print; next }
+    f && /^---/ { f = 0; print; next }
+    f && /^epic:/ && epic == "" { next }
+    f && /^type:/ { print "type: " type; next }
+    {
+      gsub(/<epic-slug>/, epic); gsub(/<slug>/, slug); gsub(/<branch>/, branch)
+      gsub(/<YYYY-MM-DD>/, d); gsub(/<Title>/, title)
+      print
+    }' "$tpl" >"$root/$rel"
+  say "created: $rel"
+  say "type: $type"
+  say "branch: $branch"
+  [ -n "$epic" ] && epic_sync "$root/$rel" planned
+  return 0
+}
+
+cmd_approve() {
+  in_repo
+  local doc
+  doc=$(find_doc "${1:?usage: wi approve <doc>}")
+  [ "$(fm_get "$doc" type)" = epic ] && { fm_set "$doc" approved "$(today)"; log_add "$doc" "Epic approved."; say "approved: $doc"; return; }
+  [ "$(fm_get "$doc" status)" = planned ] || die "status is '$(fm_get "$doc" status)', not 'planned'"
+  [ -z "$(fm_get "$doc" approved)" ] || die "already approved on $(fm_get "$doc" approved)"
+  fm_set "$doc" approved "$(today)"
+  log_add "$doc" "Plan approved."
+  say "approved: $doc"
+}
+
+cmd_start() {
+  in_repo
+  local doc status type slug branch root wroot base start wt rel wtpath
+  doc=$(find_doc "${1:?usage: wi start <doc>}")
+  type=$(fm_get "$doc" type)
+  [ "$type" = epic ] && die "epics are not implemented directly; start one of its children"
+  status=$(fm_get "$doc" status)
+  slug=$(fm_get "$doc" slug)
+  branch=$(fm_get "$doc" branch)
+  case $status in
+    in-progress)
+      say "resuming: $slug"
+      say "worktree: $(doc_root "$doc")"
+      say "next: $(cmd_next "$doc")"
+      return ;;
+    changes-requested)
+      fm_set "$doc" status in-progress
+      log_add "$doc" "Resumed to address requested changes."
+      say "resuming: $slug (changes requested — see progress log)"
+      say "worktree: $(doc_root "$doc")"
+      return ;;
+    planned) [ -n "$(fm_get "$doc" approved)" ] || die "plan is not approved; run: wi approve $slug" ;;
+    *) die "status is '$status'; this item is past implementation" ;;
+  esac
+
+  root=$(main_root)
+  wroot=$(items_root)
+  local dirty
+  dirty=$(dirty_except "$root" "$wroot")
+  [ -z "$dirty" ] || die "working tree has uncommitted changes outside $wroot/; commit or stash them first:
+$dirty"
+  git show-ref --verify --quiet "refs/heads/$branch" && die "branch $branch already exists"
+  base=$(base_branch)
+  has_remote && git -C "$root" fetch --quiet origin "$base" || true
+  start=$(base_target "$base")
+  rel=$(doc_rel "$doc")
+
+  if [ "$(cfg worktree enabled)" = enabled ]; then
+    wtpath=$(cfg worktree_path '../<repo>-worktrees/<type>-<slug>' |
+      sed "s#<repo>#$(basename "$root")#g; s#<type>#$type#g; s#<slug>#$slug#g")
+    case $wtpath in /*) wt=$wtpath ;; *) wt="$root/$wtpath" ;; esac
+    [ -e "$wt" ] && die "worktree path already exists: $wt"
+    mkdir -p "$(dirname "$wt")"
+    git -C "$root" worktree add --quiet --no-track -b "$branch" "$wt" "$start"
+    wt=$(cd "$wt" && pwd)
+    mkdir -p "$(dirname "$wt/$rel")"
+    cp "$doc" "$wt/$rel"
+    if git -C "$root" ls-files --error-unmatch "$rel" >/dev/null 2>&1; then
+      git -C "$root" restore -- "$rel"
+    else
+      rm "$doc"
+    fi
+    doc="$wt/$rel"
+    fm_set "$doc" worktree_path "$wt"
+  else
+    git -C "$root" switch --quiet --no-track -c "$branch" "$start"
+    wt=$root
+  fi
+
+  fm_set "$doc" status in-progress
+  fm_set "$doc" branch "$branch"
+  log_add "$doc" "Started on branch $branch from $start."
+  git -C "$wt" add -- "$rel"
+  git -C "$wt" commit --quiet -m "docs($slug): add approved work item plan" \
+    -m "Records the approved plan on the branch so implementation, review, and release work from the same document."
+  epic_sync "$doc" in-progress
+  say "branch: $branch"
+  say "worktree: $wt"
+  say "doc: $doc"
+  say "next: $(cmd_next "$doc")"
+}
+
+cmd_next() {
+  local doc
+  doc=$(find_doc "${1:?usage: wi next <doc>}")
+  awk '
+    /^## Implementation plan/ { s = 1; next }
+    /^## / { s = 0 }
+    s && /^[0-9]+\. \[ \]/ { print; found = 1; exit }
+    END { if (!found) print "none" }' "$doc"
+}
+
+cmd_tick() {
+  local doc n tmp
+  doc=$(find_doc "${1:?usage: wi tick <doc> <n>}")
+  n=${2:?usage: wi tick <doc> <n>}
+  grep -Eq "^$n\. \[ \]" "$doc" || die "no unticked step $n in $doc"
+  tmp=$(mktemp)
+  sed -E "s/^$n\. \[ \]/$n. [x]/" "$doc" >"$tmp" && cat "$tmp" >"$doc"
+  rm -f "$tmp"
+  say "ticked: step $n"
+  say "next: $(cmd_next "$doc")"
+}
+
+cmd_log() {
+  local doc
+  doc=$(find_doc "${1:?usage: wi log <doc> <message>}")
+  log_add "$doc" "${2:?usage: wi log <doc> <message>}"
+  say "logged"
+}
+
+cmd_verify() {
+  in_repo
+  local root quick=0 cmds c rc fail=0 results=""
+  [ "${1:-}" = --quick ] && quick=1
+  root=$(git rev-parse --show-toplevel)
+  if [ $quick -eq 1 ]; then cmds=$(test_cmd "$root"); else cmds=$(verify_cmds "$root"); fi
+  if [ -z "$cmds" ]; then
+    say "SKIP no verify commands configured or detected (set verify_commands in CLAUDE.md)"
+    return 0
+  fi
+  while IFS= read -r c; do
+    say "▶ $c"
+    set +e
+    (cd "$root" && bash -c "$c")
+    rc=$?
+    set -e
+    if [ $rc -eq 0 ]; then results="$results
+PASS $c"; else results="$results
+FAIL $c (exit $rc)"; fail=1; fi
+  done <<EOF
+$cmds
+EOF
+  printf '%s\n' "$results" | sed '/^$/d'
+  return $fail
+}
+
+# Bring the branch current with base: rebase before first push, merge after.
+bring_current() {
+  local wt=$1 base target
+  base=$(base_branch)
+  has_remote && git -C "$wt" fetch --quiet origin "$base" || true
+  target=$(base_target "$base")
+  git -C "$wt" merge-base --is-ancestor "$target" HEAD && return 0
+  if [ "$(git -C "$wt" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null)" = "origin/$(git -C "$wt" branch --show-current)" ]; then
+    say "merging $target into the branch (already pushed, so no rebase)"
+    git -C "$wt" merge --quiet --no-edit "$target" || { git -C "$wt" merge --abort; die "merge conflict with $target; resolve manually"; }
+  else
+    say "rebasing onto $target"
+    git -C "$wt" rebase --quiet "$target" || { git -C "$wt" rebase --abort; die "rebase conflict with $target; resolve manually"; }
+  fi
+}
+
+require_current() {
+  local wt=$1 target
+  target=$(base_target "$(base_branch)")
+  git -C "$wt" merge-base --is-ancestor "$target" HEAD || die "$target has moved since this branch was synced; run: wi sync"
+}
+
+cmd_sync() {
+  in_repo
+  local doc wt rel slug status dirty
+  doc=$(find_doc "${1:?usage: wi sync <doc>}")
+  wt=$(doc_root "$doc")
+  rel=$(doc_rel "$doc")
+  slug=$(fm_get "$doc" slug)
+  status=$(fm_get "$doc" status)
+  case $status in in-progress | staged) ;; *) die "status is '$status'; sync applies to in-progress or staged items" ;; esac
+  [ "$(git -C "$wt" branch --show-current)" = "$(fm_get "$doc" branch)" ] || die "$wt is not on branch $(fm_get "$doc" branch)"
+  dirty=$(dirty_except "$wt" "$rel")
+  [ -z "$dirty" ] || die "uncommitted changes besides the work item document:
+$dirty"
+  if [ -n "$(git -C "$wt" status --porcelain -- "$rel")" ]; then
+    git -C "$wt" add -- "$rel"
+    git -C "$wt" commit --quiet -m "docs($slug): record implementation progress" \
+      -m "Keeps the work item document's step checklist and progress log in step with the code on this branch."
+    say "committed document progress"
+  fi
+  bring_current "$wt"
+  (cd "$wt" && cmd_verify) || die "verification failed; fix before staging"
+  say "synced: $(git -C "$wt" rev-parse --short HEAD) is current with $(base_target "$(base_branch)")"
+}
+
+cmd_stage() {
+  in_repo
+  local doc push=0 breaking=0
+  doc=$(find_doc "${1:?usage: wi stage <doc> [--push] [--breaking]}")
+  shift
+  while [ $# -gt 0 ]; do
+    case $1 in --push) push=1 ;; --breaking) breaking=1 ;; *) die "unknown option $1" ;; esac
+    shift
+  done
+  local wt rel slug type base target cl dirty pending
+  wt=$(doc_root "$doc")
+  rel=$(doc_rel "$doc")
+  slug=$(fm_get "$doc" slug)
+  type=$(fm_get "$doc" type)
+  [ "$(fm_get "$doc" status)" = in-progress ] || die "status is '$(fm_get "$doc" status)', not 'in-progress'"
+  pending=$(awk '/^## Implementation plan/{s=1;next} /^## /{s=0} s && /^[0-9]+\. \[ \]/' "$doc")
+  [ -z "$pending" ] || die "implementation steps are not all done:
+$pending"
+  cl=$(cfg changelog CHANGELOG.md)
+  [ -f "$wt/$cl" ] || cl=""
+  dirty=$(dirty_except "$wt" "$rel" ${cl:+"$cl"})
+  [ -z "$dirty" ] || die "uncommitted changes besides the document and changelog:
+$dirty"
+  base=$(base_branch)
+  require_current "$wt"
+  target=$(base_target "$base")
+  (cd "$wt" && cmd_verify) || die "verification failed; nothing staged"
+
+  local files=() note="" ver="" old="" vf level
+  if [ -n "$cl" ]; then
+    git -C "$wt" diff --quiet "$target" -- "$cl" && die "no changelog entry: add one under Unreleased in $cl, then re-run"
+    files+=("$cl")
+  else
+    note="no changelog file"
+  fi
+  if [ "$(cfg version_policy semver)" != none ]; then
+    vf=$(version_files "$wt" | head -1)
+    if [ -n "$vf" ]; then
+      # Bump from the base's version so re-staging after requested changes does not bump twice.
+      local snap
+      snap=$(mktemp -d)
+      git -C "$wt" show "$target:$vf" >"$snap/$(basename "$vf")" 2>/dev/null || cp "$wt/$vf" "$snap/$(basename "$vf")"
+      old=$(read_version "$snap/$(basename "$vf")")
+      rm -rf "$snap"
+      [ -n "$old" ] || die "could not read a version from $vf on $target"
+      if [ $breaking -eq 1 ]; then level=major; else case $type in story) level=minor ;; *) level=patch ;; esac; fi
+      ver=$(bump "$old" "$level")
+      while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        write_version "$wt/$f" "$ver"
+        files+=("$f")
+      done <<EOF
+$(version_files "$wt")
+EOF
+      fm_set "$doc" version "$ver"
+    else
+      note="${note:+$note; }no version file"
+    fi
+  else
+    note="${note:+$note; }version_policy is none"
+  fi
+
+  fm_set "$doc" status staged
+  log_add "$doc" "Staged: verification passed${ver:+; version $old → $ver}${note:+; $note}."
+  files+=("$rel")
+  git -C "$wt" add -- "${files[@]}"
+  local subject="chore($slug): stage for review"
+  [ -n "$ver" ] && subject="chore($slug): stage version $ver"
+  git -C "$wt" commit --quiet -m "$subject" \
+    -m "Carries the changelog entry, version bump, and staged status in the reviewed change so the merge lands them unchanged."
+  epic_sync "$doc" staged
+  say "staged: $slug"
+  [ -n "$ver" ] && say "version: $old -> $ver"
+  [ -n "$note" ] && say "skipped: $note"
+  if [ $push -eq 1 ]; then
+    if has_remote; then
+      git -C "$wt" push --quiet -u origin "$(fm_get "$doc" branch)"
+      say "pushed: origin/$(fm_get "$doc" branch)"
+    else
+      say "skipped push: no remote"
+    fi
+  else
+    say "not pushed (pass --push, or set auto_push: true for wi-auto)"
+  fi
+}
+
+cmd_pr() {
+  in_repo
+  local doc body="" draft=""
+  doc=$(find_doc "${1:?usage: wi pr <doc> --body-file F [--draft]}")
+  shift
+  while [ $# -gt 0 ]; do
+    case $1 in --body-file) body=$2; shift 2 ;; --draft) draft=--draft; shift ;; *) die "unknown option $1" ;; esac
+  done
+  [ -f "$body" ] || die "--body-file is required"
+  command -v gh >/dev/null || die "gh CLI not found"
+  local wt branch url
+  wt=$(doc_root "$doc")
+  branch=$(fm_get "$doc" branch)
+  [ "$(fm_get "$doc" status)" = staged ] || die "stage the item first"
+  git -C "$wt" rev-parse '@{u}' >/dev/null 2>&1 || die "branch is not pushed; run: wi stage <doc> --push"
+  url=$(cd "$wt" && gh pr create --base "$(base_branch)" --head "$branch" --title "$(doc_title "$doc")" --body-file "$body" $draft)
+  fm_set "$doc" pr "$url"
+  log_add "$doc" "Pull request opened: $url"
+  say "pr: $url"
+}
+
+cmd_accept() {
+  in_repo
+  local doc wt
+  doc=$(find_doc "${1:?usage: wi accept <doc>}")
+  wt=$(doc_root "$doc")
+  [ "$(fm_get "$doc" status)" = staged ] || die "status is '$(fm_get "$doc" status)', not 'staged'"
+  fm_set "$doc" review_approved "$(today)"
+  log_add "$doc" "Review approved."
+  git -C "$wt" add -- "$(doc_rel "$doc")"
+  git -C "$wt" commit --quiet -m "docs($(fm_get "$doc" slug)): record review approval" \
+    -m "Release refuses to merge without a recorded approval; this is that record."
+  say "accepted: $(fm_get "$doc" slug)"
+}
+
+cmd_reject() {
+  in_repo
+  local doc wt
+  doc=$(find_doc "${1:?usage: wi reject <doc> <reason>}")
+  wt=$(doc_root "$doc")
+  [ "$(fm_get "$doc" status)" = staged ] || die "status is '$(fm_get "$doc" status)', not 'staged'"
+  fm_set "$doc" status changes-requested
+  log_add "$doc" "Changes requested: ${2:?usage: wi reject <doc> <reason>}"
+  git -C "$wt" add -- "$(doc_rel "$doc")"
+  git -C "$wt" commit --quiet -m "docs($(fm_get "$doc" slug)): record requested changes" \
+    -m "Review asked for changes; the progress log lists them for the next implementation pass."
+  epic_sync "$doc" changes-requested
+  say "changes-requested: $(fm_get "$doc" slug) — resume with: wi start $(fm_get "$doc" slug)"
+}
+
+promote_changelog() {
+  local f=$1 v=$2 tmp
+  grep -Eq '^## \[?Unreleased\]?' "$f" || return 1
+  tmp=$(mktemp)
+  awk -v v="$v" -v d="$(today)" '
+    !done && /^## \[?Unreleased\]?/ { print; print ""; print "## [" v "] - " d; done = 1; next }
+    { print }' "$f" >"$tmp"
+  cat "$tmp" >"$f"
+  rm -f "$tmp"
+}
+
+changelog_section() {
+  awk -v v="$2" '
+    index($0, "## [" v "]") == 1 { s = 1; next }
+    s && /^## / { exit }
+    s { print }' "$1"
+}
+
+cmd_release() {
+  in_repo
+  local doc yes=0 push=0
+  doc=$(find_doc "${1:?usage: wi release <doc> [--yes] [--push]}")
+  shift
+  while [ $# -gt 0 ]; do
+    case $1 in --yes) yes=1 ;; --push) push=1 ;; *) die "unknown option $1" ;; esac
+    shift
+  done
+  local wt root rel slug branch base mode status ver tagpat tag cl count closed=0
+  wt=$(doc_root "$doc")
+  root=$(main_root)
+  rel=$(doc_rel "$doc")
+  slug=$(fm_get "$doc" slug)
+  branch=$(fm_get "$doc" branch)
+  base=$(base_branch)
+  mode=$(cfg review_mode report)
+  ver=$(fm_get "$doc" version)
+  status=$(fm_get "$doc" status)
+
+  # A release interrupted after the close-out commit resumes at the merge.
+  if [ "$status" = released ] && ! git -C "$root" merge-base --is-ancestor "$branch" "$base" 2>/dev/null; then
+    closed=1
+  elif [ "$status" != staged ]; then
+    die "status is '$status', not 'staged'; run wi stage first"
+  fi
+  local approval
+  if [ "$mode" = pr ]; then
+    command -v gh >/dev/null || die "gh CLI not found"
+    approval=$(cd "$wt" && gh pr view "$branch" --json reviewDecision -q .reviewDecision 2>/dev/null || true)
+    [ "$approval" = APPROVED ] || approval="missing: pull request not approved"
+  else
+    approval=$(fm_get "$doc" review_approved)
+    [ -n "$approval" ] && approval="recorded $approval" || approval="missing: after review run wi accept $slug"
+  fi
+  if [ $yes -eq 1 ]; then
+    case $approval in missing*) die "review not approved (${approval#missing: })" ;; esac
+  fi
+  [ -z "$(git -C "$wt" status --porcelain)" ] || die "uncommitted changes in $wt"
+  if [ "$wt" != "$root" ]; then
+    [ "$(git -C "$root" branch --show-current)" = "$base" ] || die "main checkout $root must be on $base; switch it there first"
+    [ -z "$(dirty_except "$root" "$(items_root)")" ] || die "main checkout $root has uncommitted changes"
+  fi
+  require_current "$wt"
+  (cd "$wt" && cmd_verify) || die "verification failed on the branch head; not releasing"
+  cl=$(cfg changelog CHANGELOG.md)
+  [ -f "$wt/$cl" ] || cl=""
+  tagpat=$(cfg tag_pattern 'v<version>')
+  tag=""
+  if [ -n "$ver" ] && [ "$(cfg tag_releases true)" = true ]; then tag=${tagpat//<version>/$ver}; fi
+  [ -n "$tag" ] && git rev-parse -q --verify "refs/tags/$tag" >/dev/null && die "tag $tag already exists"
+  count=$(git -C "$wt" rev-list --count "$(base_target "$base")..HEAD")
+
+  say "release plan"
+  say "  branch:   $branch ($count commits$([ $closed -eq 1 ] && printf ', close-out already committed'))"
+  say "  into:     $base as a --no-ff merge commit$([ "$mode" = pr ] && printf ' via the pull request')"
+  say "  review:   $approval"
+  say "  version:  ${ver:-none}"
+  say "  tag:      ${tag:-none}$([ -n "$tag" ] && printf ' on the merge commit')"
+  say "  cleanup:  $([ "$wt" != "$root" ] && printf 'remove worktree %s; ' "$wt")delete branch $branch"
+  say "  push:     $([ $push -eq 1 ] && has_remote && echo "yes ($base, tag, delete remote branch)" || echo no)"
+  [ $yes -eq 1 ] || { say "dry run: nothing changed. Re-run with --yes to release."; return 0; }
+
+  local subject body merge_commit tmp
+  subject="$(commit_type "$doc")($slug): $(lower_first "$(doc_title "$doc")")"
+  body=$(mktemp)
+  {
+    awk '/^## Summary/ { s = 1; next } /^## / { s = 0 } s { l[++n] = $0 }
+      END { a = 1; while (a <= n && l[a] == "") a++; while (n >= a && l[n] == "") n--; for (i = a; i <= n; i++) print l[i] }' "$doc"
+    say ""
+    say "Work item: $rel"
+  } >"$body"
+
+  # Close out on the branch so the merge commit is the only commit added to the base.
+  if [ $closed -eq 0 ]; then
+    fm_set "$doc" status released
+    [ -n "$tag" ] && fm_set "$doc" tag "$tag"
+    log_add "$doc" "Released${ver:+ $ver}${tag:+ as $tag}."
+    local add=("$rel")
+    if [ -n "$cl" ] && [ -n "$ver" ] && promote_changelog "$wt/$cl" "$ver"; then add+=("$cl"); fi
+    git -C "$wt" add -- "${add[@]}"
+    git -C "$wt" commit --quiet -m "chore($slug): prepare release ${ver:-of work item}" \
+      -m "Promotes the changelog entry under its version heading and closes out the work item document, so the merge into $base carries them."
+  fi
+
+  if [ "$mode" = pr ]; then
+    git -C "$wt" push --quiet origin "$branch" || die "could not push the close-out commit to the pull request"
+    (cd "$wt" && gh pr merge "$branch" --merge --subject "$subject" --body-file "$body") ||
+      die "gh pr merge failed; the close-out commit is on the branch, re-run wi release to retry"
+    git -C "$root" pull --quiet --ff-only origin "$base"
+  else
+    [ "$wt" = "$root" ] && git -C "$root" switch --quiet "$base"
+    if [ "$(base_target "$base")" != "$base" ]; then
+      git -C "$root" merge --quiet --ff-only "origin/$base" || die "local $base has diverged from origin/$base; reconcile it first"
+    fi
+    tmp=$(mktemp)
+    { say "$subject"; say ""; cat "$body"; } >"$tmp"
+    git -C "$root" merge --quiet --no-ff -F "$tmp" "$branch" ||
+      die "merge into $base failed; the close-out commit is on the branch, re-run wi release to retry"
+    rm -f "$tmp"
+  fi
+  rm -f "$body"
+  merge_commit=$(git -C "$root" rev-parse HEAD)
+  [ "$(git -C "$root" rev-list --parents -n1 "$merge_commit" | wc -w | tr -d ' ')" -eq 3 ] ||
+    die "HEAD of $base is not a merge commit; check the merge before tagging"
+
+  epic_sync "$root/$rel" released
+  if [ -n "$tag" ]; then
+    tmp=$(mktemp)
+    { say "Release $ver"; say ""; [ -n "$cl" ] && changelog_section "$root/$cl" "$ver"; } >"$tmp"
+    git -C "$root" tag -a "$tag" -F "$tmp" "$merge_commit"
+    rm -f "$tmp"
+  fi
+
+  if [ $push -eq 1 ] && has_remote; then
+    if [ "$mode" != pr ]; then
+      git -C "$root" push --quiet origin "$base" || die "push of $base was rejected (protected branch?); the merge and tag are local — use review_mode: pr"
+    fi
+    [ -n "$tag" ] && git -C "$root" push --quiet origin "$tag"
+  fi
+
+  cd "$root"
+  if [ "$wt" != "$root" ]; then
+    git -C "$root" worktree remove "$wt" || say "warning: could not remove worktree $wt; left in place"
+  fi
+  git -C "$root" branch --quiet -d "$branch" 2>/dev/null || say "warning: $branch not deleted (not fully merged)"
+  if [ $push -eq 1 ] && has_remote && git -C "$root" ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+    git -C "$root" push --quiet origin --delete "$branch"
+  fi
+  git -C "$root" worktree prune
+  say "released: $slug"
+  say "merge_commit: $(git -C "$root" rev-parse --short "$merge_commit")"
+  [ -n "$tag" ] && say "tag: $tag"
+  [ $push -eq 1 ] || say "not pushed: $base and tags are local"
+  return 0
+}
+
+cmd_status() {
+  in_repo
+  if [ $# -gt 0 ]; then
+    local doc
+    doc=$(find_doc "$1")
+    say "doc: $doc"
+    awk 'NR==1&&/^---/{f=1;next} f&&/^---/{exit} f{sub(/[ \t]+#.*$/,""); print "  " $0}' "$doc"
+    say "next: $(cmd_next "$doc")"
+    return
+  fi
+  local wroot
+  wroot=$(items_root)
+  printf '%-20s %-6s %-18s %-28s %s\n' STATUS TYPE SLUG BRANCH NEXT
+  all_roots | while IFS= read -r r; do
+    [ -d "$r/$wroot" ] && find "$r/$wroot" -type f -name '*.md' 2>/dev/null
+  done | sort -u | while IFS= read -r d; do
+    [ -n "$(fm_get "$d" slug)" ] || continue
+    printf '%-20s %-6s %-18s %-28s %s\n' "$(fm_get "$d" status)" "$(fm_get "$d" type)" "$(fm_get "$d" slug)" \
+      "$(fm_get "$d" branch)" "$( [ "$(fm_get "$d" type)" = epic ] && echo - || cmd_next "$d" | cut -c1-50)"
+  done
+}
+
+main() {
+  local c=${1:-}
+  [ -n "$c" ] || { usage; exit 1; }
+  shift
+  case $c in
+    config) cmd_config "$@" ;;
+    status) cmd_status "$@" ;;
+    new) cmd_new "$@" ;;
+    approve) cmd_approve "$@" ;;
+    start) cmd_start "$@" ;;
+    next) cmd_next "$@" ;;
+    tick) cmd_tick "$@" ;;
+    log) cmd_log "$@" ;;
+    verify) cmd_verify "$@" ;;
+    sync) cmd_sync "$@" ;;
+    stage) cmd_stage "$@" ;;
+    pr) cmd_pr "$@" ;;
+    accept) cmd_accept "$@" ;;
+    reject) cmd_reject "$@" ;;
+    release) cmd_release "$@" ;;
+    -h | --help | help) usage ;;
+    *) usage; exit 1 ;;
+  esac
+}
+
+main "$@"

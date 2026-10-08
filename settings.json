@@ -1,0 +1,15 @@
+{
+  "enabledPlugins": {
+    "i-have-adhd@synced": true
+  },
+  "extraKnownMarketplaces": {
+    "addy-agent-skills": {
+      "source": {
+        "source": "github",
+        "repo": "addyosmani/agent-skills"
+      }
+    }
+  },
+  "tui": "fullscreen",
+  "theme": "dark"
+}

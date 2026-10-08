@@ -1,131 +1,114 @@
-# ============================================
-# Claude Code (~/.claude) .gitignore
-#
-# Track:  commands/, agents/, skills/ (authored),
-#         workflow/, CLAUDE.md, README.md
-# Ignore: settings, credentials, history, sessions,
-#         caches, projects, synced/downloaded content
-# ============================================
-
-# --------------------------------------------
-# Settings & credentials (machine-specific)
-# --------------------------------------------
-settings.json
-settings.local.json
-managed-settings.json
-remote-settings.json
-.credentials.json
-.claude.json
-.claude.json.backup
-keybindings.json
-statusline.sh
-config.json
-*.local.json
-
-# Policy / entitlement state
-policy-limits.json
-*.stamp.json
-
-# --------------------------------------------
-# Conversation & session history
-# --------------------------------------------
-history.jsonl
+# --- Claude Code runtime state (machine-local, regenerated) ---
 sessions/
-session-env/
-file-history/
-shell-snapshots/
-transcripts/
-logs/
-*.log
-
-# --------------------------------------------
-# Project-specific context & memory
-# Per-project memory, CLAUDE.md overrides, and
-# machine-specific paths encoded in dir names
-# --------------------------------------------
 projects/
-memory/
-
-# --------------------------------------------
-# Session-scoped work tracking
-# --------------------------------------------
-tasks/
+history.jsonl
 todos/
-plans/
-worktrees/
-scratchpad/
-
-# --------------------------------------------
-# Caches & ephemeral state
-# --------------------------------------------
-cache/
-image-cache/
-paste-cache/
-debug/
-downloads/
-backups/
-tmp/
-stats-cache.json
 statsig/
-telemetry/
-analytics/
+shell-snapshots/
+session-env/
+ide/
+cache/
+paste-cache/
+backups/
+file-history/
 .last-cleanup
 .last-update-result.json
-mcp-needs-auth-cache.json
-mcp-logs*/
+policy-limits.json
+policy-limits.json.stamp.json
+remote-settings.json
+daemon/
+daemon.lock
+daemon.log
+daemon.status.json
+jobs/
 
-# --------------------------------------------
-# IDE integration & runtime
-# --------------------------------------------
-ide/
-versions/
-local/
-
-# --------------------------------------------
-# Plugins — authored config tracked,
-# downloaded/synced content ignored
-# --------------------------------------------
-plugins/marketplaces/
-plugins/repos/
-plugins/cache/
-plugins/synced/
-known_marketplaces.json
-
-# --------------------------------------------
-# Skills & agents — authored tracked,
-# synced/bundled content ignored
-# --------------------------------------------
+# Skills synced from the claude.ai account; regenerated on sync
 skills/synced/
-agents/synced/
+
+# Third-party skill installed by its own installer; reinstall instead of tracking
+skills/graphify/
+
+# Machine-local overrides; settings.json stays tracked
+settings.local.json
+.credentials.json
+*.local.json
+
+# Installed plugin payloads
+plugins/
+
+# --- macOS ---
+.DS_Store
+.DS_Store?
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+.fseventsd
+.DocumentRevisions-V100
+.TemporaryItems
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.apdisk
+Icon?
+
+# --- Windows ---
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+*.stackdump
+
+# --- Linux ---
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# --- Editors / misc ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# --- More runtime state and machine-local files ---
+.claude.json
+.claude.json.backup
 .bucket-*
-
-# --------------------------------------------
-# Work-specific commands (not shareable)
-# --------------------------------------------
-commands/work-*
-
-# --------------------------------------------
-# Lock files & dependencies
-# --------------------------------------------
 *.lock
-node_modules/
-.npm/
+*.log
+*.stamp.json
+analytics/
+config.json
+debug/
+downloads/
+image-cache/
+keybindings.json
+known_marketplaces.json
+local/
+logs/
+managed-settings.json
+mcp-logs*/
+mcp-needs-auth-cache.json
+memory/
+plans/
+scratchpad/
+stats-cache.json
+statusline.sh
+tasks/
+telemetry/
+tmp/
+transcripts/
+versions/
+worktrees/
+agents/synced/
 __pycache__/
 *.py[cod]
 .venv/
 venv/
-
-# --------------------------------------------
-# OS & editor artifacts
-# --------------------------------------------
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-Thumbs.db
-*.swp
-*.swo
-*~
-.idea/
-.vscode/
+node_modules/
+.npm/
