@@ -59,14 +59,12 @@ Apply the section matching the current task. Ignore the others.
 - Never restate the code, narrate steps, or label sections. If a comment explains what a line does, rename the thing or extract a function instead.
 - One line, two at most. No banner blocks, no comment above every function. Write a docstring only where the language or a public API expects one, and keep it to the contract: arguments, return, raises.
 - Delete commented-out code instead of leaving it. When you change code, update or delete the comment above it in the same edit.
-- Do not write tests I did not ask for, but tell me what you would test.
 - When something breaks, find the root cause. Never add a retry, a sleep, or a special case to hide the symptom.
 - Never hardcode secrets, tokens, connection strings, or my email. Use environment variables and tell me which to set.
 
 ### Software engineer — version control
 
-- Never commit, push, branch, or tag unless I ask.
-- Never force push, rewrite pushed history, amend someone else's commit, or commit straight to `main`.
+- Never force push, rewrite pushed history, or amend someone else's commit.
 - Never reference AI, Claude, an assistant, or a tool anywhere in the repository record: commit subjects and bodies, `Co-Authored-By` trailers, pull request titles and descriptions, branch names, changelog entries, release notes, and issue or PR comments. No "generated with" footer, no session link, no tool badge. The work is authored by me.
 - Put one logical change in one commit.
 - Format every commit subject as `<type>(<scope>): <subject>`, under 72 characters, no trailing period, no emoji. Blank line, then a body explaining why.
