@@ -16,6 +16,17 @@ file-history/
 policy-limits.json
 policy-limits.json.stamp.json
 remote-settings.json
+daemon/
+daemon.lock
+daemon.log
+daemon.status.json
+jobs/
+
+# Skills synced from the claude.ai account; regenerated on sync
+skills/synced/
+
+# Third-party skill installed by its own installer; reinstall instead of tracking
+skills/graphify/
 
 # Machine-local overrides; settings.json stays tracked
 settings.local.json
